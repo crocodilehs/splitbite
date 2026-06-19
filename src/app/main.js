@@ -1,5 +1,6 @@
 import { compute, settle } from "../core/calc.js";
-import * as store from "./store.js";
+import { isValidCode } from "../core/code.js";
+import * as store from "./cloud-store.js";
 
 const app = document.getElementById("app");
 
@@ -16,7 +17,62 @@ function el(html) {
 function render() {
   const s = store.getState();
   app.innerHTML = "";
-  app.append(renderMembers(s), renderItems(s), renderAdjustments(s), renderSettlement(s));
+
+  if (s.status !== "active") {
+    app.append(renderGate(s));
+    return;
+  }
+
+  app.append(
+    renderSessionBar(s),
+    renderMembers(s),
+    renderItems(s),
+    renderAdjustments(s),
+    renderSettlement(s)
+  );
+}
+
+// ---------- Gate：建帳 / 加入 ----------
+function renderGate(s) {
+  const sec = el(`<section class="card gate"></section>`);
+  sec.append(el(`<h2>開始分帳</h2>`));
+  if (s.status === "loading") {
+    sec.append(el(`<p class="hint">連線中…</p>`));
+    return sec;
+  }
+  if (s.error) sec.append(el(`<p class="warn">${escapeHtml(s.error)}</p>`));
+
+  sec.append(el(`<button class="big" data-act="create">＋ 建立新分帳</button>`));
+  sec.append(el(`<p class="hint">或輸入 6 碼加入碼加入別人的分帳：</p>`));
+  const form = el(
+    `<form class="row" data-act="join">
+       <input name="code" placeholder="加入碼" autocapitalize="characters" autocomplete="off" maxlength="8" />
+       <button type="submit">加入</button>
+     </form>`
+  );
+  sec.append(form);
+  return sec;
+}
+
+// ---------- Session 標頭：顯示加入碼 ----------
+function renderSessionBar(s) {
+  const sec = el(`<section class="card sessionbar"></section>`);
+  sec.append(
+    el(
+      `<div class="row sb-row">
+         <div>
+           <div class="sb-label">加入碼</div>
+           <div class="sb-code">${s.code}</div>
+         </div>
+         <button class="link" data-act="copyCode">📋 複製</button>
+         <button class="link" data-act="leave">離開</button>
+       </div>`
+    )
+  );
+  if (!s.me) {
+    sec.append(el(`<p class="hint">👇 在下方點你的名字，設定「我是誰」（沒有就先新增自己）。</p>`));
+  }
+  return sec;
 }
 
 // ---------- Members ----------
@@ -26,7 +82,7 @@ function renderMembers(s) {
   for (const m of s.members) {
     const chip = el(
       `<span class="chip ${s.me === m.id ? "is-me" : ""}">
-         <button class="chip-name" data-act="setMe" data-id="${m.id}">${m.name}${s.me === m.id ? " ⭐" : ""}</button>
+         <button class="chip-name" data-act="setMe" data-id="${m.id}">${escapeHtml(m.name)}${s.me === m.id ? " ⭐" : ""}</button>
          <button class="chip-x" data-act="rmMember" data-id="${m.id}" aria-label="刪除">×</button>
        </span>`
     );
@@ -41,21 +97,14 @@ function renderMembers(s) {
      </form>`
   );
   sec.append(form);
-  sec.append(el(`<p class="hint">點名字＝設定「我是誰」（⭐）。階段 1 為本機示範。</p>`));
   return sec;
 }
 
 // ---------- Items ----------
 function renderItems(s) {
   const sec = el(`<section class="card"><h2>🧾 品項與認領</h2></section>`);
-
-  if (s.members.length === 0) {
-    sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
-  }
-
-  for (const it of s.items) {
-    sec.append(renderItemRow(s, it));
-  }
+  if (s.members.length === 0) sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
+  for (const it of s.items) sec.append(renderItemRow(s, it));
 
   const form = el(
     `<form class="row item-add" data-act="addItem">
@@ -73,7 +122,6 @@ function renderItems(s) {
 function renderItemRow(s, it) {
   const total = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
   const wrap = el(`<div class="item"></div>`);
-
   const head = el(
     `<div class="item-head">
        <input class="item-name" data-act="editItem" data-id="${it.id}" data-field="name" value="${escapeAttr(it.name)}" placeholder="品名" />
@@ -86,15 +134,12 @@ function renderItemRow(s, it) {
   );
   wrap.append(head);
 
-  // 認領大按鈕（整列）
   const claimers = s.members.filter((m) => store.isClaimed(it.id, m.id));
   const claimRow = el(`<div class="claims"></div>`);
   for (const m of s.members) {
     const on = store.isClaimed(it.id, m.id);
     claimRow.append(
-      el(
-        `<button class="claim-btn ${on ? "on" : ""}" data-act="toggleClaim" data-item="${it.id}" data-member="${m.id}">${m.name}</button>`
-      )
+      el(`<button class="claim-btn ${on ? "on" : ""}" data-act="toggleClaim" data-item="${it.id}" data-member="${m.id}">${escapeHtml(m.name)}</button>`)
     );
   }
   wrap.append(claimRow);
@@ -147,7 +192,6 @@ function renderAdjustments(s) {
 // ---------- Settlement ----------
 function renderSettlement(s) {
   const sec = el(`<section class="card result"><h2>💰 結算</h2></section>`);
-
   let result;
   try {
     result = compute(s);
@@ -156,23 +200,21 @@ function renderSettlement(s) {
     return sec;
   }
 
-  // 墊款人選擇
   const payerRow = el(`<div class="row payer"><label>墊款人：</label></div>`);
   const sel = el(`<select data-act="setPayer"></select>`);
   sel.append(el(`<option value="">— 請選擇 —</option>`));
   for (const m of s.members) {
-    sel.append(el(`<option value="${m.id}" ${s.payer_id === m.id ? "selected" : ""}>${m.name}</option>`));
+    sel.append(el(`<option value="${m.id}" ${s.payer_id === m.id ? "selected" : ""}>${escapeHtml(m.name)}</option>`));
   }
   payerRow.append(sel);
   sec.append(payerRow);
 
-  // 每人應付
   const table = el(`<div class="owe-table"></div>`);
   for (const p of result.perMember) {
     table.append(
       el(
         `<div class="owe-row">
-           <span class="owe-name">${p.name}</span>
+           <span class="owe-name">${escapeHtml(p.name)}</span>
            <span class="owe-detail">小計 ${money(p.subtotal)}${p.adjustment ? ` ${p.adjustment > 0 ? "+" : "−"}${money(Math.abs(p.adjustment))}` : ""}</span>
            <span class="owe-total">${money(p.total)}</span>
          </div>`
@@ -181,7 +223,6 @@ function renderSettlement(s) {
   }
   sec.append(table);
 
-  // 總額與未認領提示
   sec.append(
     el(
       `<div class="totals">
@@ -197,7 +238,6 @@ function renderSettlement(s) {
     );
   }
 
-  // 結算模式切換
   const modeRow = el(
     `<div class="seg">
        <button data-act="setMode" data-mode="toPayer" class="${s.settleMode === "toPayer" ? "on" : ""}">全還給墊款人</button>
@@ -206,7 +246,6 @@ function renderSettlement(s) {
   );
   sec.append(modeRow);
 
-  // 轉帳清單
   const { transfers } = settle(result, s.payer_id, s.settleMode);
   if (!s.payer_id) {
     sec.append(el(`<p class="hint">選擇墊款人後顯示轉帳明細。</p>`));
@@ -215,14 +254,11 @@ function renderSettlement(s) {
   } else {
     const tl = el(`<div class="transfers"></div>`);
     for (const t of transfers) {
-      tl.append(el(`<div class="transfer">${t.fromName} → <b>${t.toName}</b> <span>${money(t.amount)}</span></div>`));
+      tl.append(el(`<div class="transfer">${escapeHtml(t.fromName)} → <b>${escapeHtml(t.toName)}</b> <span>${money(t.amount)}</span></div>`));
     }
     sec.append(tl);
     sec.append(el(`<button class="share" data-act="share">📋 複製分帳結果</button>`));
   }
-
-  // 危險操作
-  sec.append(el(`<button class="reset" data-act="resetAll">清空全部</button>`));
   return sec;
 }
 
@@ -231,7 +267,7 @@ function shareText() {
   const result = compute(s);
   const { transfers } = settle(result, s.payer_id, s.settleMode);
   const payer = s.members.find((m) => m.id === s.payer_id);
-  const lines = ["🍽️ SplitBite 分帳結果", ""];
+  const lines = ["🍽️ SplitBite 分帳結果", `加入碼：${s.code}`, ""];
   for (const p of result.perMember) lines.push(`${p.name}：${money(p.total)}`);
   lines.push("", `墊款人：${payer ? payer.name : "（未指定）"}`);
   if (transfers.length) {
@@ -242,22 +278,27 @@ function shareText() {
   return lines.join("\n");
 }
 
-// ---------- Event delegation ----------
+// ---------- Events ----------
 app.addEventListener("submit", (e) => {
   const act = e.target.dataset.act;
-  if (act === "addMember") {
+  if (act === "join") {
+    e.preventDefault();
+    const code = e.target.querySelector('[name="code"]').value;
+    if (!isValidCode(code)) {
+      store.getState().error = "加入碼格式不正確";
+      render();
+      return;
+    }
+    store.joinByCode(code).catch(() => render());
+  } else if (act === "addMember") {
     e.preventDefault();
     const input = e.target.querySelector('[name="name"]');
-    store.addMember(input.value);
+    if (input.value.trim()) store.addMember(input.value);
     input.value = "";
   } else if (act === "addItem") {
     e.preventDefault();
     const f = e.target;
-    store.addItem({
-      name: f.name.value,
-      qty: f.qty.value,
-      unit_price: f.unit_price.value,
-    });
+    store.addItem({ name: f.name.value, qty: f.qty.value, unit_price: f.unit_price.value });
     f.name.value = "";
     f.qty.value = "1";
     f.unit_price.value = "0";
@@ -270,6 +311,16 @@ app.addEventListener("click", async (e) => {
   if (!btn) return;
   const act = btn.dataset.act;
   switch (act) {
+    case "create":
+      store.createSession().catch(() => render());
+      break;
+    case "leave":
+      if (confirm("離開這場分帳？（資料仍保留在雲端，可用加入碼回來）")) store.leaveSession();
+      break;
+    case "copyCode":
+      await copy(store.getState().code);
+      flash(btn, "✅ 已複製", "📋 複製");
+      break;
     case "setMe":
       store.setMe(btn.dataset.id);
       break;
@@ -291,7 +342,7 @@ app.addEventListener("click", async (e) => {
     case "addAdj":
       store.addAdjustment(
         btn.dataset.mode === "fixed"
-          ? { label: "折扣", mode: "fixed", value: -0 }
+          ? { label: "折扣", mode: "fixed", value: 0 }
           : { label: "服務費", mode: "percent", value: 10 }
       );
       break;
@@ -303,11 +354,7 @@ app.addEventListener("click", async (e) => {
       break;
     case "share":
       await copy(shareText());
-      btn.textContent = "✅ 已複製";
-      setTimeout(() => (btn.textContent = "📋 複製分帳結果"), 1500);
-      break;
-    case "resetAll":
-      if (confirm("確定清空全部資料？")) store.resetAll();
+      flash(btn, "✅ 已複製", "📋 複製分帳結果");
       break;
   }
 });
@@ -316,19 +363,20 @@ app.addEventListener("change", (e) => {
   const t = e.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act;
-  if (act === "editItem") {
-    store.updateItem(t.dataset.id, { [t.dataset.field]: t.value });
-  } else if (act === "editAdj") {
-    store.updateAdjustment(t.dataset.id, { [t.dataset.field]: t.value });
-  } else if (act === "setPayer") {
-    store.setPayer(t.value || null);
-  }
+  if (act === "editItem") store.updateItem(t.dataset.id, { [t.dataset.field]: t.value });
+  else if (act === "editAdj") store.updateAdjustment(t.dataset.id, { [t.dataset.field]: t.value });
+  else if (act === "setPayer") store.setPayer(t.value || null);
 });
+
+function flash(btn, on, off) {
+  btn.textContent = on;
+  setTimeout(() => (btn.textContent = off), 1500);
+}
 
 async function copy(text) {
   try {
     await navigator.clipboard.writeText(text);
-  } catch (_) {
+  } catch {
     const ta = document.createElement("textarea");
     ta.value = text;
     document.body.append(ta);
@@ -347,3 +395,4 @@ function escapeAttr(s) {
 
 store.subscribe(render);
 render();
+store.init();
