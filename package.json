@@ -1,0 +1,11 @@
+{
+  "name": "splitbite",
+  "version": "0.1.0",
+  "description": "聚餐分帳工具 — 上傳收據自動辨識品項，多人各自認領，計算誰付誰多少",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "license": "MIT"
+}
