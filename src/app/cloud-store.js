@@ -5,7 +5,7 @@
 //
 // localStorage（§1）僅存：最近加入的 session（code）與「我在這場是誰」。
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "../vendor/supabase-js.js"; // 本地 vendor（npm run vendor 產生），不依賴 CDN
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { normalizeCode } from "../core/code.js";
 import * as db from "./db.js";
@@ -23,6 +23,7 @@ const EMPTY = () => ({
   claims: [],
   adjustments: [],
   payer_id: null,
+  ocr_total: null,
   me: null,
   settleMode: "toPayer",
 });
@@ -129,6 +130,7 @@ async function reload(sessionId = state.sessionId) {
     claims: data.claims,
     adjustments: data.adjustments,
     payer_id: data.session.payer_id,
+    ocr_total: data.session.ocr_total ?? null,
   };
   emit();
 }

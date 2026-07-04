@@ -75,12 +75,10 @@ export async function removeMember(sb, id) {
 }
 
 // ---- items ----
-export async function addItem(sb, sessionId, { name = "", qty = 1, unit_price = 0 } = {}) {
-  const { data, error } = await sb
-    .from("items")
-    .insert({ session_id: sessionId, name, qty: toInt(qty, 1), unit_price: toInt(unit_price, 0) })
-    .select()
-    .single();
+export async function addItem(sb, sessionId, { name = "", qty = 1, unit_price = 0, confidence = null } = {}) {
+  const row = { session_id: sessionId, name, qty: toInt(qty, 1), unit_price: toInt(unit_price, 0) };
+  if (confidence != null) row.confidence = confidence; // OCR 信心（'high'|'low'），人工輸入不帶
+  const { data, error } = await sb.from("items").insert(row).select().single();
   if (error) throw error;
   return data;
 }
@@ -146,6 +144,12 @@ export async function removeAdjustment(sb, id) {
 // ---- settlement ----
 export async function setPayer(sb, sessionId, memberId) {
   const { error } = await sb.from("sessions").update({ payer_id: memberId }).eq("id", sessionId);
+  if (error) throw error;
+}
+
+// OCR 讀到的收據總額（階段 3 寫入，結算頁對帳用）
+export async function setOcrTotal(sb, sessionId, total) {
+  const { error } = await sb.from("sessions").update({ ocr_total: toInt(total, null) }).eq("id", sessionId);
   if (error) throw error;
 }
 

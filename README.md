@@ -11,7 +11,7 @@
 | 1 | 本機版核心：品項 → 認領 → 計算 → 兩種結算 | ✅ 完成 |
 | 2 | 接 Supabase：建表、Realtime、加入碼機制 | ✅ 完成（live 整合測試 3/3 綠）|
 | 3 | 接 OCR：Edge Function + Gemini 自動填品項 | ⏳ |
-| 4 | 打磨：服務費/折扣、QR code、結果分享 | ⏳ |
+| 4 | 打磨：服務費/折扣、QR code、結果分享 | ✅ 完成（低信心高亮與 OCR 對帳的 UI 已就緒，資料由階段 3 填入）|
 
 ## 階段 1：計算核心（可測模組）
 
@@ -41,7 +41,18 @@ npx serve .
 python3 -m http.server 8000
 ```
 
-然後開啟 `index.html`。狀態暫存於 localStorage；階段 2 會以 Supabase + Realtime 取代 `store.js`，對外 state 形狀不變。
+然後開啟 `index.html`。「最近的 session」與「我是誰」存於 localStorage；資料本體在 Supabase（Realtime 同步）。
+
+前端執行期依賴（supabase-js、qrcode-generator）已打包在 `src/vendor/`，不依賴 CDN。
+升級依賴版本後執行 `npm run vendor` 重新產生並 commit。
+
+## 階段 4：分享與打磨
+
+- **QR code**：session 標頭顯示加入 QR，內容為 `<app 網址>#join=<code>`；掃碼或點分享連結開啟即自動加入（深連結處理後會清掉 hash，避免重整重複觸發）。
+- **分享連結**：行動裝置用系統分享面板（`navigator.share`），桌面退回複製連結。
+- **OCR 信心高亮**：`items.confidence = 'low'` 的品項以黃框＋⚠️ 提示核對（資料由階段 3 OCR 填入，人工輸入為 null）。
+- **OCR 對帳警告**：`sessions.ocr_total`（收據上讀到的總額）與計算合計不符時，結算區顯示警告。
+- **結果分享**：一鍵複製各人應付與轉帳明細文字。
 
 ## 階段 2：Supabase 設定與實測
 

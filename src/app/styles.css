@@ -156,6 +156,21 @@ button.link {
 .sb-row .link + .link {
   margin-left: 4px;
 }
+.qr {
+  margin-top: 10px;
+  text-align: center;
+}
+.qr svg {
+  width: 160px;
+  height: 160px;
+  max-width: 60vw;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.qr-hint {
+  margin-top: 4px;
+}
 
 /* members */
 .member-chips {
@@ -194,6 +209,14 @@ form[data-act="addMember"] input {
   border-radius: 12px;
   padding: 10px;
   margin-bottom: 10px;
+}
+.item.low-conf {
+  border-color: var(--warn);
+  background: #fffbeb; /* OCR 信心低：黃色高亮提醒核對 */
+}
+.conf-badge {
+  flex: none;
+  cursor: help;
 }
 .item-head {
   display: flex;
