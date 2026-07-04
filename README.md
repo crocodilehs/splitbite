@@ -9,7 +9,7 @@
 | 階段 | 內容 | 狀態 |
 |------|------|------|
 | 1 | 本機版核心：品項 → 認領 → 計算 → 兩種結算 | ✅ 完成 |
-| 2 | 接 Supabase：建表、Realtime、加入碼機制 | ⏳ |
+| 2 | 接 Supabase：建表、Realtime、加入碼機制 | 🔶 程式完成，待套用 `rls.sql` 後實測 |
 | 3 | 接 OCR：Edge Function + Gemini 自動填品項 | ⏳ |
 | 4 | 打磨：服務費/折扣、QR code、結果分享 | ⏳ |
 
@@ -42,6 +42,21 @@ python3 -m http.server 8000
 ```
 
 然後開啟 `index.html`。狀態暫存於 localStorage；階段 2 會以 Supabase + Realtime 取代 `store.js`，對外 state 形狀不變。
+
+## 階段 2：Supabase 設定與實測
+
+1. Supabase Dashboard → SQL Editor，依序執行 `supabase/schema.sql`、`supabase/rls.sql`（兩者皆可重複執行）。
+   - ⚠️ `rls.sql` 含必要的 `GRANT`：RLS 政策只是過濾條件，anon 角色仍需表級權限，
+     缺少時所有請求都會回 `42501 permission denied`。
+2. 將專案 URL 與 publishable key 填入 `src/app/config.js`（參考 `config.example.js`）。
+3. 跑端到端整合測試（建 session、Realtime 推播、CRUD 讀寫一致，測後自動清理）：
+
+```bash
+npm install
+SPLITBITE_LIVE=1 npm test
+```
+
+未設 `SPLITBITE_LIVE=1` 時整合測試自動略過，`npm test` 只跑離線單元測試。
 
 ## 計算規則摘要（§4）
 
