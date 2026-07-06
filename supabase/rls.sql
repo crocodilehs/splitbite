@@ -14,6 +14,14 @@
 -- 日後方案 B：改用 Supabase Anonymous Sign-in，RLS 依 auth.uid() 收斂到
 -- 「該訪客所屬 session」，較嚴謹；屆時替換以下政策即可。
 
+-- 表級權限：RLS 政策只是「過濾條件」，anon 仍需先有表級 GRANT 才能操作。
+-- （以 CLI / 非 dashboard 預設角色建表時，預設權限可能未涵蓋 anon，
+--   會得到 42501 permission denied — 實測即踩到此雷。）
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete
+  on public.sessions, public.members, public.items, public.claims, public.adjustments
+  to anon, authenticated;
+
 alter table public.sessions    enable row level security;
 alter table public.members     enable row level security;
 alter table public.items       enable row level security;

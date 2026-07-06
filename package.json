@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "test:watch": "node --test --watch"
+    "test:watch": "node --test --watch",
+    "vendor": "node scripts/vendor.mjs"
   },
   "license": "MIT",
   "devDependencies": {
-    "@supabase/supabase-js": "^2.108.2"
+    "@supabase/supabase-js": "^2.108.2",
+    "esbuild": "^0.28.1",
+    "qrcode-generator": "^2.0.4"
   }
 }

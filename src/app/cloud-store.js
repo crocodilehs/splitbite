@@ -5,9 +5,10 @@
 //
 // localStorage（§1）僅存：最近加入的 session（code）與「我在這場是誰」。
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "../vendor/supabase-js.js"; // 本地 vendor（npm run vendor 產生），不依賴 CDN
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { normalizeCode } from "../core/code.js";
+import { normalizeOcrResult } from "../core/ocr.js";
 import * as db from "./db.js";
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -23,6 +24,8 @@ const EMPTY = () => ({
   claims: [],
   adjustments: [],
   payer_id: null,
+  ocr_total: null,
+  ocrBusy: false,
   me: null,
   settleMode: "toPayer",
 });
@@ -129,6 +132,7 @@ async function reload(sessionId = state.sessionId) {
     claims: data.claims,
     adjustments: data.adjustments,
     payer_id: data.session.payer_id,
+    ocr_total: data.session.ocr_total ?? null,
   };
   emit();
 }
@@ -193,3 +197,28 @@ export const updateAdjustment = (id, patch) => run(db.updateAdjustment(sb, id, p
 export const removeAdjustment = (id) => run(db.removeAdjustment(sb, id));
 
 export const setPayer = (id) => run(db.setPayer(sb, state.sessionId, id));
+
+// ---- OCR：上傳收據 → Edge Function（Gemini）→ 寫入品項與收據總額 ----
+// base64：不含 dataURL 前綴的影像內容（main.js 已縮圖壓縮）
+export async function ocrReceipt(base64, mime) {
+  setState({ ocrBusy: true, error: null });
+  try {
+    const { data, error } = await sb.functions.invoke("ocr", { body: { image: base64, mime } });
+    if (error) {
+      // FunctionsHttpError：讀函式回的 { error } 訊息
+      const detail = await error.context?.json?.().catch(() => null);
+      throw new Error(detail?.error || "OCR 服務呼叫失敗");
+    }
+    const { items, total } = normalizeOcrResult(data);
+    if (items.length === 0) throw new Error("辨識不到品項，請拍清楚一點或手動輸入");
+    for (const it of items) await db.addItem(sb, state.sessionId, it);
+    if (total != null) await db.setOcrTotal(sb, state.sessionId, total);
+    await reload();
+    return items.length;
+  } catch (e) {
+    setState({ error: e.message });
+    throw e;
+  } finally {
+    setState({ ocrBusy: false });
+  }
+}

@@ -45,6 +45,10 @@ create table if not exists public.adjustments (
   constraint adjustments_mode_check check (mode in ('percent', 'fixed'))
 );
 
+-- 階段 3/4 欄位（可重複執行）：OCR 信心標記與收據總額對帳
+alter table public.items    add column if not exists confidence text;   -- 'high' | 'low'，人工輸入為 null
+alter table public.sessions add column if not exists ocr_total numeric; -- OCR 讀到的收據總額（對帳警告用）
+
 -- 索引：依 session 撈資料、認領查詢
 create index if not exists members_session_idx on public.members(session_id);
 create index if not exists items_session_idx on public.items(session_id);
@@ -73,8 +77,16 @@ begin
   end if;
 end $$;
 
-alter publication supabase_realtime add table public.sessions;
-alter publication supabase_realtime add table public.members;
-alter publication supabase_realtime add table public.items;
-alter publication supabase_realtime add table public.claims;
-alter publication supabase_realtime add table public.adjustments;
+do $$
+declare t text;
+begin
+  foreach t in array array['sessions','members','items','claims','adjustments']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I;', t);
+    end if;
+  end loop;
+end $$;

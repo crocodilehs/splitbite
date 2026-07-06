@@ -1,5 +1,6 @@
+import qrcode from "../vendor/qrcode-generator.js"; // 本地 vendor（npm run vendor 產生）
 import { compute, settle } from "../core/calc.js";
-import { isValidCode } from "../core/code.js";
+import { isValidCode, normalizeCode } from "../core/code.js";
 import * as store from "./cloud-store.js";
 
 const app = document.getElementById("app");
@@ -65,14 +66,31 @@ function renderSessionBar(s) {
            <div class="sb-code">${s.code}</div>
          </div>
          <button class="link" data-act="copyCode">📋 複製</button>
+         <button class="link" data-act="shareLink">🔗 分享連結</button>
          <button class="link" data-act="leave">離開</button>
        </div>`
     )
   );
+  sec.append(renderQr(s.code));
   if (!s.me) {
     sec.append(el(`<p class="hint">👇 在下方點你的名字，設定「我是誰」（沒有就先新增自己）。</p>`));
   }
   return sec;
+}
+
+// 加入連結：掃 QR 或點連結 → 開啟 app 並自動加入（#join=CODE）
+function joinUrl(code) {
+  return `${location.origin}${location.pathname}#join=${code}`;
+}
+
+function renderQr(code) {
+  const qr = qrcode(0, "M"); // type 0 = 自動選最小版本
+  qr.addData(joinUrl(code));
+  qr.make();
+  const box = el(`<div class="qr" title="掃描加入這場分帳"></div>`);
+  box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2 });
+  box.append(el(`<p class="hint qr-hint">掃描 QR code 直接加入</p>`));
+  return box;
 }
 
 // ---------- Members ----------
@@ -103,6 +121,19 @@ function renderMembers(s) {
 // ---------- Items ----------
 function renderItems(s) {
   const sec = el(`<section class="card"><h2>🧾 品項與認領</h2></section>`);
+
+  // OCR：拍照/上傳收據 → Edge Function 自動填品項
+  const ocrRow = el(
+    `<div class="row ocr-row">
+       <label class="ocr-btn ${s.ocrBusy ? "busy" : ""}">
+         ${s.ocrBusy ? "⏳ 辨識中…" : "📷 拍收據自動填品項"}
+         <input type="file" accept="image/*" capture="environment" data-act="ocr" ${s.ocrBusy ? "disabled" : ""} hidden />
+       </label>
+     </div>`
+  );
+  sec.append(ocrRow);
+  if (s.error && !s.ocrBusy) sec.append(el(`<p class="warn">${escapeHtml(s.error)}</p>`));
+
   if (s.members.length === 0) sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
   for (const it of s.items) sec.append(renderItemRow(s, it));
 
@@ -121,9 +152,11 @@ function renderItems(s) {
 
 function renderItemRow(s, it) {
   const total = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
-  const wrap = el(`<div class="item"></div>`);
+  const lowConf = it.confidence === "low"; // OCR 信心低（階段 3 填入），人工輸入為 null
+  const wrap = el(`<div class="item ${lowConf ? "low-conf" : ""}"></div>`);
   const head = el(
     `<div class="item-head">
+       ${lowConf ? `<span class="conf-badge" title="OCR 辨識可信度低，請確認品名與金額">⚠️</span>` : ""}
        <input class="item-name" data-act="editItem" data-id="${it.id}" data-field="name" value="${escapeAttr(it.name)}" placeholder="品名" />
        <input class="item-num" data-act="editItem" data-id="${it.id}" data-field="qty" type="number" min="1" value="${it.qty}" inputmode="numeric" />
        <span class="x">×</span>
@@ -232,6 +265,13 @@ function renderSettlement(s) {
        </div>`
     )
   );
+  // OCR 對帳：收據上讀到的總額與計算合計不符時警告（階段 3 填入 ocr_total）
+  const ocrTotal = Number(s.ocr_total);
+  if (ocrTotal > 0 && ocrTotal !== result.grandTotal) {
+    sec.append(
+      el(`<p class="warn">⚠️ 收據 OCR 總額 ${money(ocrTotal)} 與計算合計 ${money(result.grandTotal)} 不符，請檢查品項或調整項。</p>`)
+    );
+  }
   if (result.unclaimedTotal > 0) {
     sec.append(
       el(`<p class="warn">⚠️ 尚有 ${money(result.unclaimedTotal)} 未認領（${result.unclaimedItems.map((i) => escapeHtml(i.name || "未命名")).join("、")}）</p>`)
@@ -321,6 +361,16 @@ app.addEventListener("click", async (e) => {
       await copy(store.getState().code);
       flash(btn, "✅ 已複製", "📋 複製");
       break;
+    case "shareLink": {
+      const url = joinUrl(store.getState().code);
+      if (navigator.share) {
+        navigator.share({ title: "SplitBite 分帳", text: "掃碼或點連結加入分帳", url }).catch(() => {});
+      } else {
+        await copy(url);
+        flash(btn, "✅ 已複製連結", "🔗 分享連結");
+      }
+      break;
+    }
     case "setMe":
       store.setMe(btn.dataset.id);
       break;
@@ -363,10 +413,45 @@ app.addEventListener("change", (e) => {
   const t = e.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act;
+  if (act === "ocr") {
+    const file = t.files && t.files[0];
+    t.value = ""; // 允許重選同一張
+    if (file) uploadReceipt(file).catch(() => {}); // 錯誤已寫入 state.error 由 render 顯示
+    return;
+  }
   if (act === "editItem") store.updateItem(t.dataset.id, { [t.dataset.field]: t.value });
   else if (act === "editAdj") store.updateAdjustment(t.dataset.id, { [t.dataset.field]: t.value });
   else if (act === "setPayer") store.setPayer(t.value || null);
 });
+
+// 收據照片先縮圖再上傳：省流量、加快辨識，也避開 Edge Function 的大小上限
+async function uploadReceipt(file) {
+  const dataUrl = await downscaleImage(file, 1600, 0.85);
+  const [head, base64] = dataUrl.split(",");
+  const mime = head.match(/^data:([^;]+)/)?.[1] || "image/jpeg";
+  await store.ocrReceipt(base64, mime);
+}
+
+function downscaleImage(file, maxSide, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("無法讀取圖片"));
+    };
+    img.src = url;
+  });
+}
 
 function flash(btn, on, off) {
   btn.textContent = on;
@@ -393,6 +478,20 @@ function escapeAttr(s) {
   return escapeHtml(s);
 }
 
+// 深連結：#join=CODE（QR / 分享連結進來）優先於「最近的 session」
+function hashJoinCode() {
+  const m = location.hash.match(/^#join=(.+)$/);
+  if (!m) return null;
+  const code = normalizeCode(decodeURIComponent(m[1]));
+  return isValidCode(code) ? code : null;
+}
+
 store.subscribe(render);
 render();
-store.init();
+const deepLink = hashJoinCode();
+if (deepLink) {
+  history.replaceState(null, "", location.pathname + location.search); // 清掉 hash，避免重整重複觸發
+  store.joinByCode(deepLink).catch(() => render());
+} else {
+  store.init();
+}

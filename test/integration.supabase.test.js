@@ -41,6 +41,7 @@ test("createSession 產生唯一加入碼並寫入", { skip: !LIVE }, async () =
 });
 
 test("Realtime：A 裝置新增成員，B 裝置即時收到", { skip: !LIVE }, async () => {
+  assert.ok(session, "前置失敗：createSession 未成功（見上一測試）");
   const sbB = createClient(URL, KEY);
   const received = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Realtime 逾時：未收到 members 變更")), 8000);
@@ -66,6 +67,7 @@ test("Realtime：A 裝置新增成員，B 裝置即時收到", { skip: !LIVE }, 
 });
 
 test("品項 / 認領 / 調整 / 墊款人 寫入與讀回一致", { skip: !LIVE }, async () => {
+  assert.ok(session, "前置失敗：createSession 未成功（見上一測試）");
   const members = (await sb.from("members").select("*").eq("session_id", session.id)).data;
   let amy = members[0];
   const bob = await db.addMember(sb, session.id, "Bob");
