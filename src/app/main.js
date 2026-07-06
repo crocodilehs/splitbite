@@ -121,6 +121,19 @@ function renderMembers(s) {
 // ---------- Items ----------
 function renderItems(s) {
   const sec = el(`<section class="card"><h2>🧾 品項與認領</h2></section>`);
+
+  // OCR：拍照/上傳收據 → Edge Function 自動填品項
+  const ocrRow = el(
+    `<div class="row ocr-row">
+       <label class="ocr-btn ${s.ocrBusy ? "busy" : ""}">
+         ${s.ocrBusy ? "⏳ 辨識中…" : "📷 拍收據自動填品項"}
+         <input type="file" accept="image/*" capture="environment" data-act="ocr" ${s.ocrBusy ? "disabled" : ""} hidden />
+       </label>
+     </div>`
+  );
+  sec.append(ocrRow);
+  if (s.error && !s.ocrBusy) sec.append(el(`<p class="warn">${escapeHtml(s.error)}</p>`));
+
   if (s.members.length === 0) sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
   for (const it of s.items) sec.append(renderItemRow(s, it));
 
@@ -400,10 +413,45 @@ app.addEventListener("change", (e) => {
   const t = e.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act;
+  if (act === "ocr") {
+    const file = t.files && t.files[0];
+    t.value = ""; // 允許重選同一張
+    if (file) uploadReceipt(file).catch(() => {}); // 錯誤已寫入 state.error 由 render 顯示
+    return;
+  }
   if (act === "editItem") store.updateItem(t.dataset.id, { [t.dataset.field]: t.value });
   else if (act === "editAdj") store.updateAdjustment(t.dataset.id, { [t.dataset.field]: t.value });
   else if (act === "setPayer") store.setPayer(t.value || null);
 });
+
+// 收據照片先縮圖再上傳：省流量、加快辨識，也避開 Edge Function 的大小上限
+async function uploadReceipt(file) {
+  const dataUrl = await downscaleImage(file, 1600, 0.85);
+  const [head, base64] = dataUrl.split(",");
+  const mime = head.match(/^data:([^;]+)/)?.[1] || "image/jpeg";
+  await store.ocrReceipt(base64, mime);
+}
+
+function downscaleImage(file, maxSide, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("無法讀取圖片"));
+    };
+    img.src = url;
+  });
+}
 
 function flash(btn, on, off) {
   btn.textContent = on;

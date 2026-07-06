@@ -203,6 +203,26 @@ form[data-act="addMember"] input {
   flex: 1;
 }
 
+/* OCR 上傳 */
+.ocr-row {
+  margin: 0 0 10px;
+}
+.ocr-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 12px;
+  border: 1.5px dashed var(--brand);
+  border-radius: 12px;
+  color: var(--brand);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ocr-btn.busy {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* items */
 .item {
   border: 1px solid var(--line);

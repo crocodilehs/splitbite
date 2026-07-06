@@ -10,7 +10,7 @@
 |------|------|------|
 | 1 | 本機版核心：品項 → 認領 → 計算 → 兩種結算 | ✅ 完成 |
 | 2 | 接 Supabase：建表、Realtime、加入碼機制 | ✅ 完成（live 整合測試 3/3 綠）|
-| 3 | 接 OCR：Edge Function + Gemini 自動填品項 | ⏳ |
+| 3 | 接 OCR：Edge Function + Gemini 自動填品項 | 🔶 程式完成，待部署 Edge Function 後實測 |
 | 4 | 打磨：服務費/折扣、QR code、結果分享 | ✅ 完成（低信心高亮與 OCR 對帳的 UI 已就緒，資料由階段 3 填入）|
 
 ## 階段 1：計算核心（可測模組）
@@ -45,6 +45,24 @@ python3 -m http.server 8000
 
 前端執行期依賴（supabase-js、qrcode-generator）已打包在 `src/vendor/`，不依賴 CDN。
 升級依賴版本後執行 `npm run vendor` 重新產生並 commit。
+
+## 階段 3：OCR（收據 → 品項）
+
+流程：前端把收據照片縮圖（≤1600px JPEG）→ `POST /functions/v1/ocr`（Edge Function）→
+Gemini（`gemini-3.1-flash-lite`，structured output）→ 前端 `src/core/ocr.js` 正規化 → 寫入品項。
+
+- API key 只存在 Supabase secrets（`GEMINI_API_KEY`），不進前端與 repo。
+- 服務費/折扣/稅不會進品項（app 有調整項機制），但會包含在 `total` 供對帳。
+- 影像模糊或金額經推算的品項標 `confidence:'low'`，UI 黃框提醒核對。
+
+### 部署
+
+1. Dashboard → Edge Functions → Secrets：設定 `GEMINI_API_KEY`。
+2. 部署 `supabase/functions/ocr/index.ts`：
+   - CLI：`supabase functions deploy ocr --no-verify-jwt --project-ref <ref>`
+   - 或 Dashboard → Edge Functions → Deploy new function → 名稱 `ocr` → 貼上檔案內容。
+   - ⚠️ 需**關閉 JWT 驗證**（`--no-verify-jwt` / 取消勾選 Enforce JWT verification）：
+     前端用新式 publishable key，不是 JWT，開著會一律 401。
 
 ## 階段 4：分享與打磨
 
