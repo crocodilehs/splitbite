@@ -73,6 +73,13 @@ main {
   align-items: center;
   margin-top: 8px;
 }
+/* flex 子元素預設 min-width:auto 不會縮小，窄螢幕會把行尾按鈕擠出卡片外 */
+.row > * {
+  min-width: 0;
+}
+.row > button {
+  flex: none;
+}
 
 input,
 select,
@@ -132,16 +139,22 @@ button.link {
   font-size: 18px;
 }
 
-/* session 標頭 */
+/* session 標頭（Material 風格：文字 + icon 按鈕） */
 .sessionbar {
   padding: 10px 14px;
 }
 .sb-row {
-  margin-top: 0;
+  display: flex;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sb-codebox {
+  min-width: 0;
 }
 .sb-label {
   font-size: 11px;
+  letter-spacing: 1px;
   color: var(--muted);
 }
 .sb-code {
@@ -150,11 +163,45 @@ button.link {
   letter-spacing: 4px;
   color: var(--brand);
 }
-.sb-row .link {
+.sb-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-left: auto;
 }
-.sb-row .link + .link {
-  margin-left: 4px;
+.mi {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex: none;
+}
+.mbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+.mbtn:hover {
+  background: rgba(47, 109, 240, 0.08);
+}
+.mbtn:active {
+  background: rgba(47, 109, 240, 0.16);
+}
+.mbtn-muted {
+  color: var(--muted);
+}
+.mbtn-muted:hover {
+  background: rgba(107, 114, 128, 0.1);
+}
+.mbtn-muted:active {
+  background: rgba(107, 114, 128, 0.18);
 }
 .qr {
   margin-top: 10px;
@@ -191,13 +238,43 @@ button.link {
 .chip-name {
   background: none;
   color: var(--ink);
-  padding: 8px 6px 8px 12px;
+  padding: 8px 4px 8px 12px;
+}
+.chip-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  color: var(--muted);
+  padding: 8px 2px;
+}
+.chip-edit-btn .mi {
+  width: 15px;
+  height: 15px;
 }
 .chip-x {
   background: none;
   color: var(--muted);
   padding: 8px 12px 8px 4px;
   font-weight: 700;
+}
+.chip-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef2ff;
+  border-radius: 999px;
+  padding: 3px 4px;
+}
+.chip-edit input {
+  width: 120px;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+.chip-save {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px;
+  border-radius: 999px;
 }
 form[data-act="addMember"] input {
   flex: 1;
@@ -238,7 +315,8 @@ form[data-act="addMember"] input {
   flex: none;
   cursor: help;
 }
-.item-head {
+/* 品名獨占一列，盡量完整顯示；數量/單價/小計移到第二列 */
+.item-name-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -247,28 +325,96 @@ form[data-act="addMember"] input {
   flex: 1;
   min-width: 0;
 }
-.item-num {
-  width: 64px;
-  text-align: right;
+.item-calc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
 }
-.item-head .x {
+.item-num {
+  width: 76px;
+  text-align: right;
+  flex: none;
+}
+.item-calc-row .x {
   color: var(--muted);
 }
 .item-total {
   font-weight: 700;
   white-space: nowrap;
+  margin-left: auto;
 }
 .item-del,
 button.item-del {
   background: none;
   color: var(--danger);
   padding: 6px;
+  flex: none;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  color: var(--muted);
+  padding: 6px;
+  border-radius: 999px;
+  flex: none;
+}
+.icon-btn:hover {
+  background: rgba(107, 114, 128, 0.1);
 }
 .item-add input[name="name"] {
-  flex: 1;
+  flex: 1 1 auto;
 }
 .item-add input[type="number"] {
-  width: 70px;
+  width: 64px;
+  flex: none;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* 已認領品項的摺疊摘要列 */
+.item-collapsed {
+  padding: 4px 6px;
+}
+.item-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--ink);
+  text-align: left;
+  padding: 8px 6px;
+  border-radius: 8px;
+  font-weight: inherit;
+}
+.item-summary:active {
+  background: rgba(47, 109, 240, 0.06);
+}
+.item-summary .mi {
+  color: var(--muted);
+}
+.sum-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere; /* 品名太長就換行，不截斷 */
+}
+.sum-claimers {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sum-total {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .claims {
@@ -304,13 +450,17 @@ button.item-del {
 
 /* adjustments */
 .adj input[data-field="label"] {
-  flex: 1;
+  flex: 1 1 auto;
 }
 .adj select {
-  width: 72px;
+  width: 70px;
+  flex: none;
 }
 .adj input[type="number"] {
-  width: 90px;
+  width: 76px;
+  flex: none;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 /* settlement */

@@ -5,6 +5,26 @@ import * as store from "./cloud-store.js";
 
 const app = document.getElementById("app");
 
+// 純 UI 狀態（不進 store）：成員編輯中、已認領品項的展開狀態
+let editingMemberId = null;
+let expandedItems = new Set();
+
+// Material Symbols（Apache 2.0）路徑，viewBox="0 -960 960 960"
+const ICON_PATHS = {
+  copy: "M360-240q-33 0-56.5-23.5T280-320v-480q0-33 23.5-56.5T360-880h360q33 0 56.5 23.5T800-800v480q0 33-23.5 56.5T720-240H360Zm0-80h360v-480H360v480ZM200-80q-33 0-56.5-23.5T120-160v-560h80v560h440v80H200Zm160-240v-480 480Z",
+  share:
+    "M680-80q-50 0-85-35t-35-85q0-6 3-28L282-392q-16 15-37 23.5t-45 8.5q-50 0-85-35t-35-85q0-50 35-85t85-35q24 0 45 8.5t37 23.5l281-164q-2-7-2.5-13.5T560-760q0-50 35-85t85-35q50 0 85 35t35 85q0 50-35 85t-85 35q-24 0-45-8.5T598-672L317-508q2 7 2.5 13.5t.5 14.5q0 8-.5 14.5T317-452l281 164q16-15 37-23.5t45-8.5q50 0 85 35t35 85q0 50-35 85t-85 35Zm0-80q17 0 28.5-11.5T720-200q0-17-11.5-28.5T680-240q-17 0-28.5 11.5T640-200q0 17 11.5 28.5T680-160ZM200-440q17 0 28.5-11.5T240-480q0-17-11.5-28.5T200-520q-17 0-28.5 11.5T160-480q0 17 11.5 28.5T200-440Zm480-320q17 0 28.5-11.5T720-800q0-17-11.5-28.5T680-840q-17 0-28.5 11.5T640-800q0 17 11.5 28.5T680-760Z",
+  logout:
+    "M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h280v80H200Zm440-160-55-58 102-102H360v-80h327L585-622l55-58 200 200-200 200Z",
+  edit: "M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z",
+  check: "M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z",
+  expandMore: "M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z",
+  expandLess: "m296-345-56-56 240-240 240 240-56 56-184-184-184 184Z",
+};
+function icon(name) {
+  return `<svg class="mi" viewBox="0 -960 960 960" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
+}
+
 function money(n) {
   return `$${n.toLocaleString("en-US")}`;
 }
@@ -17,6 +37,9 @@ function el(html) {
 
 function render() {
   const s = store.getState();
+  // 樂觀新增的 tmp id 換成真 id 後，同步更新以 id 記錄的 UI 狀態
+  expandedItems = new Set([...expandedItems].map(store.canonicalId));
+  if (editingMemberId) editingMemberId = store.canonicalId(editingMemberId);
   app.innerHTML = "";
 
   if (s.status !== "active") {
@@ -60,14 +83,16 @@ function renderSessionBar(s) {
   const sec = el(`<section class="card sessionbar"></section>`);
   sec.append(
     el(
-      `<div class="row sb-row">
-         <div>
+      `<div class="sb-row">
+         <div class="sb-codebox">
            <div class="sb-label">加入碼</div>
            <div class="sb-code">${s.code}</div>
          </div>
-         <button class="link" data-act="copyCode">📋 複製</button>
-         <button class="link" data-act="shareLink">🔗 分享連結</button>
-         <button class="link" data-act="leave">離開</button>
+         <div class="sb-actions">
+           <button class="mbtn" data-act="copyCode">${icon("copy")}<span>複製</span></button>
+           <button class="mbtn" data-act="shareLink">${icon("share")}<span>分享</span></button>
+           <button class="mbtn mbtn-muted" data-act="leave">${icon("logout")}<span>離開</span></button>
+         </div>
        </div>`
     )
   );
@@ -98,9 +123,21 @@ function renderMembers(s) {
   const sec = el(`<section class="card"><h2>👥 成員</h2></section>`);
   const list = el(`<div class="member-chips"></div>`);
   for (const m of s.members) {
+    if (editingMemberId === m.id) {
+      list.append(
+        el(
+          `<form class="chip chip-edit" data-act="saveMember" data-id="${m.id}">
+             <input name="name" value="${escapeAttr(m.name)}" autocomplete="off" aria-label="成員名字" />
+             <button type="submit" class="chip-save" aria-label="儲存">${icon("check")}</button>
+           </form>`
+        )
+      );
+      continue;
+    }
     const chip = el(
       `<span class="chip ${s.me === m.id ? "is-me" : ""}">
          <button class="chip-name" data-act="setMe" data-id="${m.id}">${escapeHtml(m.name)}${s.me === m.id ? " ⭐" : ""}</button>
+         <button class="chip-edit-btn" data-act="editMember" data-id="${m.id}" aria-label="編輯名字">${icon("edit")}</button>
          <button class="chip-x" data-act="rmMember" data-id="${m.id}" aria-label="刪除">×</button>
        </span>`
     );
@@ -140,12 +177,11 @@ function renderItems(s) {
   const form = el(
     `<form class="row item-add" data-act="addItem">
        <input name="name" placeholder="品名" autocomplete="off" />
-       <input name="qty" type="number" min="1" value="1" inputmode="numeric" />
-       <input name="unit_price" type="number" min="0" value="0" inputmode="numeric" />
-       <button type="submit">＋</button>
+       <input name="qty" type="number" min="1" placeholder="數量" inputmode="numeric" aria-label="數量" />
+       <input name="unit_price" type="number" min="0" placeholder="單價" inputmode="numeric" aria-label="單價" />
+       <button type="submit" aria-label="新增品項">＋</button>
      </form>`
   );
-  sec.append(el(`<p class="hint">欄位：品名 / 數量 / 單價</p>`));
   sec.append(form);
   return sec;
 }
@@ -153,21 +189,43 @@ function renderItems(s) {
 function renderItemRow(s, it) {
   const total = (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
   const lowConf = it.confidence === "low"; // OCR 信心低（階段 3 填入），人工輸入為 null
+  const claimers = s.members.filter((m) => store.isClaimed(it.id, m.id));
+
+  // 已認領的品項預設摺疊成一列摘要，點擊可展開編輯（減少畫面長度）
+  if (claimers.length > 0 && !expandedItems.has(it.id)) {
+    return el(
+      `<div class="item item-collapsed ${lowConf ? "low-conf" : ""}">
+         <button class="item-summary" data-act="expandItem" data-id="${it.id}" aria-expanded="false" aria-label="展開品項">
+           <span class="sum-name">${lowConf ? "⚠️ " : ""}${escapeHtml(it.name || "未命名")}</span>
+           <span class="sum-claimers">${claimers.map((c) => escapeHtml(c.name)).join("、")}</span>
+           <span class="sum-total">${money(total)}</span>
+           ${icon("expandMore")}
+         </button>
+       </div>`
+    );
+  }
+
   const wrap = el(`<div class="item ${lowConf ? "low-conf" : ""}"></div>`);
   const head = el(
-    `<div class="item-head">
+    `<div class="item-name-row">
        ${lowConf ? `<span class="conf-badge" title="OCR 辨識可信度低，請確認品名與金額">⚠️</span>` : ""}
        <input class="item-name" data-act="editItem" data-id="${it.id}" data-field="name" value="${escapeAttr(it.name)}" placeholder="品名" />
-       <input class="item-num" data-act="editItem" data-id="${it.id}" data-field="qty" type="number" min="1" value="${it.qty}" inputmode="numeric" />
-       <span class="x">×</span>
-       <input class="item-num" data-act="editItem" data-id="${it.id}" data-field="unit_price" type="number" min="0" value="${it.unit_price}" inputmode="numeric" />
-       <span class="item-total">= ${money(total)}</span>
+       ${claimers.length > 0 ? `<button class="icon-btn" data-act="collapseItem" data-id="${it.id}" aria-expanded="true" aria-label="摺疊品項">${icon("expandLess")}</button>` : ""}
        <button class="item-del" data-act="rmItem" data-id="${it.id}" aria-label="刪除品項">🗑</button>
      </div>`
   );
   wrap.append(head);
+  wrap.append(
+    el(
+      `<div class="item-calc-row">
+         <input class="item-num" data-act="editItem" data-id="${it.id}" data-field="qty" type="number" min="1" value="${it.qty}" inputmode="numeric" aria-label="數量" />
+         <span class="x">×</span>
+         <input class="item-num" data-act="editItem" data-id="${it.id}" data-field="unit_price" type="number" min="0" value="${it.unit_price}" inputmode="numeric" aria-label="單價" />
+         <span class="item-total">= ${money(total)}</span>
+       </div>`
+    )
+  );
 
-  const claimers = s.members.filter((m) => store.isClaimed(it.id, m.id));
   const claimRow = el(`<div class="claims"></div>`);
   for (const m of s.members) {
     const on = store.isClaimed(it.id, m.id);
@@ -335,13 +393,21 @@ app.addEventListener("submit", (e) => {
     const input = e.target.querySelector('[name="name"]');
     if (input.value.trim()) store.addMember(input.value);
     input.value = "";
+    input.focus();
+  } else if (act === "saveMember") {
+    e.preventDefault();
+    const id = e.target.dataset.id;
+    const name = e.target.querySelector('[name="name"]').value.trim();
+    editingMemberId = null;
+    if (name) store.renameMember(id, name);
+    else render();
   } else if (act === "addItem") {
     e.preventDefault();
     const f = e.target;
-    store.addItem({ name: f.name.value, qty: f.qty.value, unit_price: f.unit_price.value });
+    store.addItem({ name: f.name.value, qty: f.qty.value || 1, unit_price: f.unit_price.value || 0 });
     f.name.value = "";
-    f.qty.value = "1";
-    f.unit_price.value = "0";
+    f.qty.value = "";
+    f.unit_price.value = "";
     f.name.focus();
   }
 });
@@ -359,7 +425,7 @@ app.addEventListener("click", async (e) => {
       break;
     case "copyCode":
       await copy(store.getState().code);
-      flash(btn, "✅ 已複製", "📋 複製");
+      flash(btn, "已複製", "複製");
       break;
     case "shareLink": {
       const url = joinUrl(store.getState().code);
@@ -367,23 +433,41 @@ app.addEventListener("click", async (e) => {
         navigator.share({ title: "SplitBite 分帳", text: "掃碼或點連結加入分帳", url }).catch(() => {});
       } else {
         await copy(url);
-        flash(btn, "✅ 已複製連結", "🔗 分享連結");
+        flash(btn, "已複製連結", "分享");
       }
       break;
     }
     case "setMe":
       store.setMe(btn.dataset.id);
       break;
+    case "editMember":
+      editingMemberId = btn.dataset.id;
+      render();
+      app.querySelector(".chip-edit input")?.select();
+      break;
     case "rmMember":
+      if (editingMemberId === btn.dataset.id) editingMemberId = null;
       store.removeMember(btn.dataset.id);
       break;
     case "rmItem":
+      expandedItems.delete(btn.dataset.id);
       store.removeItem(btn.dataset.id);
       break;
+    case "expandItem":
+      expandedItems.add(btn.dataset.id);
+      render();
+      break;
+    case "collapseItem":
+      expandedItems.delete(btn.dataset.id);
+      render();
+      break;
     case "toggleClaim":
+      // 認領中的品項保持展開，其餘已認領品項自動摺疊（換選下一項＝上一項選完了）
+      expandedItems = new Set([btn.dataset.item]);
       store.toggleClaim(btn.dataset.item, btn.dataset.member);
       break;
     case "claimAll":
+      expandedItems = new Set(); // 全選是完整動作，直接摺疊（其他展開中的也一併收起）
       store.claimAll(btn.dataset.item);
       break;
     case "clearClaims":
@@ -454,8 +538,9 @@ function downscaleImage(file, maxSide, quality) {
 }
 
 function flash(btn, on, off) {
-  btn.textContent = on;
-  setTimeout(() => (btn.textContent = off), 1500);
+  const label = btn.querySelector("span") || btn; // 圖示按鈕只換文字，保留 SVG
+  label.textContent = on;
+  setTimeout(() => (label.textContent = off), 1500);
 }
 
 async function copy(text) {
