@@ -116,8 +116,12 @@ function renderOnce() {
         } catch {}
       }
       // 有未存編輯且與 state 不同：focus 在設值之後，之後的 blur 不會再
-      // 觸發 change，先補發一次讓 editItem / editAdj 不掉更新
-      if (dirty && f.value !== rendered) f.dispatchEvent(new Event("change", { bubbles: true }));
+      // 觸發 change，先補發一次讓 editItem / editAdj / setPayer 不掉更新。
+      // 只對「change 真的會 commit 到 store」的欄位補發；新增表單（addMember/
+      // addItem）的草稿沒有對應的 change 持久化邏輯，補發只會白白清掉 dirty，
+      // 讓下一輪重繪把使用者還沒送出的字清空。
+      const persistsOnChange = f.dataset.act === "editItem" || f.dataset.act === "editAdj" || f.dataset.act === "setPayer";
+      if (dirty && persistsOnChange && f.value !== rendered) f.dispatchEvent(new Event("change", { bubbles: true }));
       break;
     }
   }
@@ -657,11 +661,15 @@ app.addEventListener("click", async (e) => {
 });
 
 app.addEventListener("change", (e) => {
-  // change＝已 commit（editItem/editAdj 寫入 store 或表單值定案），解除 dirty
-  if (e.target.matches("input, select, textarea") && dirtyFieldKey === fieldKey(e.target)) dirtyFieldKey = null;
   const t = e.target.closest("[data-act]");
+  const act = t?.dataset.act;
+  // change 只有在會真的 commit 到 store（editItem/editAdj/setPayer）時才代表
+  // 「已存檔」而解除 dirty；addMember/addItem 等草稿表單的 change 只是使用者
+  // 移開焦點（blur），草稿還沒送出，此時解除 dirty 會讓下一輪重繪把還沒送出
+  // 的字當成非 dirty 蓋成空字串 —— 草稿要保持 dirty 直到 submit 才清除。
+  const persists = act === "editItem" || act === "editAdj" || act === "setPayer";
+  if (persists && e.target.matches("input, select, textarea") && dirtyFieldKey === fieldKey(e.target)) dirtyFieldKey = null;
   if (!t) return;
-  const act = t.dataset.act;
   if (act === "ocr") {
     const file = t.files && t.files[0];
     t.value = ""; // 允許重選同一張
