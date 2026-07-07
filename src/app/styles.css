@@ -145,12 +145,13 @@ button.link {
 }
 .sb-row {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
 }
 .sb-codebox {
   min-width: 0;
+  text-align: center;
 }
 .sb-label {
   font-size: 11px;
@@ -166,8 +167,8 @@ button.link {
 .sb-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  margin-left: auto;
 }
 .mi {
   width: 18px;
@@ -238,24 +239,30 @@ button.link {
 .chip-name {
   background: none;
   color: var(--ink);
-  padding: 8px 4px 8px 12px;
+  padding: 11px 4px 11px 14px;
 }
+/* 編輯 / 刪除是手指主要目標：拉到 44px 高、加寬點擊範圍 */
 .chip-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  color: var(--muted);
+  padding: 11px 8px;
+}
+.chip-edit-btn .mi {
+  width: 20px;
+  height: 20px;
+}
+.chip-x {
   display: inline-flex;
   align-items: center;
   background: none;
   color: var(--muted);
-  padding: 8px 2px;
-}
-.chip-edit-btn .mi {
-  width: 15px;
-  height: 15px;
-}
-.chip-x {
-  background: none;
-  color: var(--muted);
-  padding: 8px 12px 8px 4px;
+  padding: 11px 14px 11px 8px;
   font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
 }
 .chip-edit {
   display: inline-flex;

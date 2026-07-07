@@ -160,11 +160,12 @@ function renderItems(s) {
   const sec = el(`<section class="card"><h2>🧾 品項與認領</h2></section>`);
 
   // OCR：拍照/上傳收據 → Edge Function 自動填品項
+  // 不加 capture 屬性：手機會跳出「拍照或從相簿選取」的選單，兩種都支援
   const ocrRow = el(
     `<div class="row ocr-row">
        <label class="ocr-btn ${s.ocrBusy ? "busy" : ""}">
-         ${s.ocrBusy ? "⏳ 辨識中…" : "📷 拍收據自動填品項"}
-         <input type="file" accept="image/*" capture="environment" data-act="ocr" ${s.ocrBusy ? "disabled" : ""} hidden />
+         ${s.ocrBusy ? "⏳ 辨識中…" : "📷 拍照 / 上傳收據自動填品項"}
+         <input type="file" accept="image/*" data-act="ocr" ${s.ocrBusy ? "disabled" : ""} hidden />
        </label>
      </div>`
   );
