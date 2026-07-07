@@ -12,6 +12,7 @@ let expandedItems = new Set();
 let receiptPreview = null; // { url, expanded, collapsed }
 let showAdjHelp = false;
 let showMemberHelp = false;
+let dirtyFieldKey = null; // 目前 focus 欄位「使用者有輸入、尚未 commit」才設，重繪還原值時依此判斷
 
 // Material Symbols（Apache 2.0）路徑，viewBox="0 -960 960 960"
 const ICON_PATHS = {
@@ -40,7 +41,31 @@ function el(html) {
   return t.content.firstElementChild;
 }
 
+// render 重入保護：innerHTML 清空會移除 focus 中已修改的輸入框，Chrome 會
+// 同步觸發 change → 寫入 store → emit → 又呼叫 render。若放任重入，外層
+// render 會用開頭快照的過期 state 蓋掉內層畫好的新 DOM。改為「進行中就
+// 排隊」，本輪結束後再以最新 state 重畫一次。
+let rendering = false;
+let renderQueued = false;
+
 function render() {
+  if (rendering) {
+    renderQueued = true;
+    return;
+  }
+  rendering = true;
+  try {
+    renderOnce();
+  } finally {
+    rendering = false;
+    if (renderQueued) {
+      renderQueued = false;
+      render();
+    }
+  }
+}
+
+function renderOnce() {
   const s = store.getState();
   // 樂觀新增的 tmp id 換成真 id 後，同步更新以 id 記錄的 UI 狀態
   expandedItems = new Set([...expandedItems].map(store.canonicalId));
@@ -78,17 +103,21 @@ function render() {
   if (restore) {
     for (const f of app.querySelectorAll("input, select")) {
       if (fieldKey(f) !== restore.key) continue;
+      // 只有使用者真的輸入過（dirty）才回寫舊值；純 focus 未編輯時保留
+      // 重繪後的新值，避免把過期內容蓋掉其他人剛同步進來的更新
+      const dirty = dirtyFieldKey === restore.key;
       const rendered = f.value;
-      f.value = restore.value;
+      if (dirty) f.value = restore.value;
       f.focus({ preventScroll: true });
       if (restore.selStart != null) {
         try {
-          f.setSelectionRange(restore.selStart, restore.selEnd);
+          const len = f.value.length;
+          f.setSelectionRange(Math.min(restore.selStart, len), Math.min(restore.selEnd, len));
         } catch {}
       }
-      // 還原的內容與 state 不同（有未存的編輯）：focus 在設值之後，之後的
-      // blur 不會再觸發 change，先補發一次讓 editItem / editAdj 不掉更新
-      if (f.value !== rendered) f.dispatchEvent(new Event("change", { bubbles: true }));
+      // 有未存編輯且與 state 不同：focus 在設值之後，之後的 blur 不會再
+      // 觸發 change，先補發一次讓 editItem / editAdj 不掉更新
+      if (dirty && f.value !== rendered) f.dispatchEvent(new Event("change", { bubbles: true }));
       break;
     }
   }
@@ -469,6 +498,12 @@ function shareText() {
 }
 
 // ---------- Events ----------
+// 使用者實際輸入才標記 dirty；change（commit 到 store）後解除
+app.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.matches("input, select, textarea")) dirtyFieldKey = fieldKey(t);
+});
+
 app.addEventListener("submit", (e) => {
   const act = e.target.dataset.act;
   if (act === "join") {
@@ -482,25 +517,32 @@ app.addEventListener("submit", (e) => {
     store.joinByCode(code).catch(() => render());
   } else if (act === "addMember") {
     e.preventDefault();
+    // store.addMember 會同步 emit → render 重建表單：先取值、清欄位、
+    // 解除 dirty，重繪還原時才不會把剛送出的名字塞回新表單（Enter 連按會重複新增）
     const input = e.target.querySelector('[name="name"]');
-    if (input.value.trim()) store.addMember(input.value);
+    const name = input.value.trim();
     input.value = "";
-    input.focus();
+    dirtyFieldKey = null;
+    if (name) store.addMember(name);
+    app.querySelector('form[data-act="addMember"] input')?.focus();
   } else if (act === "saveMember") {
     e.preventDefault();
     const id = e.target.dataset.id;
     const name = e.target.querySelector('[name="name"]').value.trim();
     editingMemberId = null;
+    dirtyFieldKey = null;
     if (name) store.renameMember(id, name);
     else render();
   } else if (act === "addItem") {
     e.preventDefault();
     const f = e.target;
-    store.addItem({ name: f.name.value, qty: f.qty.value || 1, unit_price: f.unit_price.value || 0 });
+    const item = { name: f.name.value, qty: f.qty.value || 1, unit_price: f.unit_price.value || 0 };
     f.name.value = "";
     f.qty.value = "";
     f.unit_price.value = "";
-    f.name.focus();
+    dirtyFieldKey = null;
+    store.addItem(item);
+    app.querySelector('.item-add input[name="name"]')?.focus();
   }
 });
 
@@ -615,6 +657,8 @@ app.addEventListener("click", async (e) => {
 });
 
 app.addEventListener("change", (e) => {
+  // change＝已 commit（editItem/editAdj 寫入 store 或表單值定案），解除 dirty
+  if (e.target.matches("input, select, textarea") && dirtyFieldKey === fieldKey(e.target)) dirtyFieldKey = null;
   const t = e.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act;

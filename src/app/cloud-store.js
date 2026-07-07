@@ -386,9 +386,11 @@ export function removeAdjustment(id) {
 }
 
 export function setPayer(id) {
+  // 等待真 id 期間使用者可能離開/換 session，鎖定呼叫當下的 session
+  const sessionId = state.sessionId;
   setState({ payer_id: id });
   return realId(id)
-    .then((rid) => db.setPayer(sb, state.sessionId, rid))
+    .then((rid) => db.setPayer(sb, sessionId, rid))
     .catch(resync);
 }
 
