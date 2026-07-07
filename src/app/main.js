@@ -9,8 +9,9 @@ const app = document.getElementById("app");
 // 收據照片預覽（本機 dataURL，供比對 OCR 結果）、調整項說明開關
 let editingMemberId = null;
 let expandedItems = new Set();
-let receiptPreview = null; // { url, expanded }
+let receiptPreview = null; // { url, expanded, collapsed }
 let showAdjHelp = false;
+let showMemberHelp = false;
 
 // Material Symbols（Apache 2.0）路徑，viewBox="0 -960 960 960"
 const ICON_PATHS = {
@@ -121,7 +122,14 @@ function renderQr(code) {
 
 // ---------- Members ----------
 function renderMembers(s) {
-  const sec = el(`<section class="card"><h2>👥 成員</h2></section>`);
+  const sec = el(
+    `<section class="card">
+       <h2>👥 成員
+         <button class="icon-btn help-btn" data-act="toggleMemberHelp" aria-label="說明" aria-expanded="${showMemberHelp}">${icon("help")}</button>
+       </h2>
+     </section>`
+  );
+  if (showMemberHelp) sec.append(el(`<p class="hint section-help">點成員名字可設定哪個是自己（⭐）。</p>`));
   const list = el(`<div class="member-chips"></div>`);
   for (const m of s.members) {
     if (editingMemberId === m.id) {
@@ -153,7 +161,6 @@ function renderMembers(s) {
      </form>`
   );
   sec.append(form);
-  sec.append(el(`<p class="hint">點成員名字可設定哪個是自己（⭐）。</p>`));
   return sec;
 }
 
@@ -172,24 +179,36 @@ function renderItems(s) {
      </div>`
   );
   sec.append(ocrRow);
-  // 收據照片預覽：辨識中與辨識後都顯示，方便比對結果；點圖可放大/縮小
+  // 收據照片預覽：辨識中與辨識後都顯示，方便比對結果；可摺疊、點圖可放大/縮小
   if (receiptPreview) {
-    const pv = el(
-      `<div class="receipt-preview ${receiptPreview.expanded ? "expanded" : ""}">
-         <img src="${receiptPreview.url}" alt="收據照片" data-act="toggleReceipt" />
-         <div class="receipt-tools">
-           <span class="hint">${receiptPreview.expanded ? "點圖片縮小" : "點圖片放大"}</span>
-           <button class="link" data-act="closeReceipt">關閉圖片</button>
-         </div>
-       </div>`
-    );
-    sec.append(pv);
+    if (receiptPreview.collapsed) {
+      sec.append(
+        el(
+          `<div class="receipt-preview collapsed">
+             <button class="receipt-bar" data-act="uncollapseReceipt">
+               <span>🧾 收據照片</span>${icon("expandMore")}
+             </button>
+           </div>`
+        )
+      );
+    } else {
+      sec.append(
+        el(
+          `<div class="receipt-preview ${receiptPreview.expanded ? "expanded" : ""}">
+             <img src="${receiptPreview.url}" alt="收據照片" data-act="toggleReceipt" />
+             <div class="receipt-tools">
+               <span class="hint">${receiptPreview.expanded ? "點圖片縮小" : "點圖片放大"}</span>
+               <button class="link" data-act="collapseReceipt">摺疊圖片</button>
+               <button class="link" data-act="closeReceipt">關閉圖片</button>
+             </div>
+           </div>`
+        )
+      );
+    }
   }
   if (s.error && !s.ocrBusy) sec.append(el(`<p class="warn">${escapeHtml(s.error)}</p>`));
 
-  if (s.members.length === 0) sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
-  for (const it of s.items) sec.append(renderItemRow(s, it));
-
+  // 手動新增放在拍照/照片下方、品項列表上方：方便看著收據補上缺漏品項
   const form = el(
     `<form class="row item-add" data-act="addItem">
        <input name="name" placeholder="品名" autocomplete="off" />
@@ -199,6 +218,9 @@ function renderItems(s) {
      </form>`
   );
   sec.append(form);
+
+  if (s.members.length === 0) sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
+  for (const it of s.items) sec.append(renderItemRow(s, it));
   return sec;
 }
 
@@ -275,7 +297,7 @@ function renderAdjustments(s) {
        </h2>
      </section>`
   );
-  if (showAdjHelp) sec.append(el(`<p class="hint adj-help">折扣請填負數。服務費 / 折扣會按各品項小計的占比分攤給成員。</p>`));
+  if (showAdjHelp) sec.append(el(`<p class="hint section-help">折扣請填負數。服務費 / 折扣會按各品項小計的占比分攤給成員。</p>`));
   for (const a of s.adjustments) {
     sec.append(
       el(
@@ -487,12 +509,29 @@ app.addEventListener("click", async (e) => {
       if (receiptPreview) receiptPreview.expanded = !receiptPreview.expanded;
       render();
       break;
-    case "closeReceipt":
-      receiptPreview = null;
+    case "collapseReceipt":
+      if (receiptPreview) {
+        receiptPreview.collapsed = true;
+        receiptPreview.expanded = false;
+      }
       render();
+      break;
+    case "uncollapseReceipt":
+      if (receiptPreview) receiptPreview.collapsed = false;
+      render();
+      break;
+    case "closeReceipt":
+      if (confirm("關閉收據照片？關閉後需要重新拍照或上傳才能再看。")) {
+        receiptPreview = null;
+        render();
+      }
       break;
     case "toggleAdjHelp":
       showAdjHelp = !showAdjHelp;
+      render();
+      break;
+    case "toggleMemberHelp":
+      showMemberHelp = !showMemberHelp;
       render();
       break;
     case "toggleClaim":
