@@ -166,37 +166,233 @@ export function setSettleMode(mode) {
   setState({ settleMode: mode === "minimal" ? "minimal" : "toPayer" });
 }
 
-// ---- mutator：寫 Supabase 後重抓（Realtime 也會觸發，重抓為冪等）----
-const run = (p) => p.then(() => reload()).catch((e) => setState({ error: e.message }));
+// ---- mutator：樂觀更新（先改本機 state 立即重繪，再寫 Supabase）----
+// 寫入成功後不需重抓：本機 state 已正確，且 Realtime 事件仍會觸發 reload 校正；
+// 寫入失敗時以 resync() 重抓伺服器狀態還原畫面。
+//
+// 新增中的資料先掛暫時 id（tmp-*）；後續引用該 id 的操作（改名、認領、刪除…）
+// 以 realId() 等 insert 回來的真 id 再寫入，避免使用者動作快於網路時掉寫入。
+let tmpSeq = 0;
+const tmpId = () => `tmp-${Date.now()}-${tmpSeq++}`;
+const idWaiters = new Map(); // tmpId -> { promise, resolve, reject }
+const resolvedIds = new Map(); // tmpId -> 真 id（同步查詢用；一場 session 的量很小）
 
-export const addMember = (name) => run(db.addMember(sb, state.sessionId, name));
-export const renameMember = (id, name) => run(db.renameMember(sb, id, name));
-export const removeMember = (id) => run(db.removeMember(sb, id));
+// UI 若以 id 記狀態（展開、編輯中…），可用此函式把舊 tmp id 換成真 id
+export function canonicalId(id) {
+  return resolvedIds.get(id) || id;
+}
 
-export const addItem = (item) => run(db.addItem(sb, state.sessionId, item));
-export const updateItem = (id, patch) => run(db.updateItem(sb, id, patch));
-export const removeItem = (id) => run(db.removeItem(sb, id));
+function trackTmp(id) {
+  let resolve, reject;
+  const promise = new Promise((res, rej) => ((resolve = res), (reject = rej)));
+  promise.catch(() => {}); // 失敗由各操作自行處理，避免 unhandled rejection
+  idWaiters.set(id, { promise, resolve, reject });
+}
+function realId(id) {
+  const w = idWaiters.get(id);
+  return w ? w.promise : Promise.resolve(id);
+}
+
+function resync(e) {
+  setState({ error: e?.message || String(e) });
+  reload().catch(() => {});
+}
+
+// insert 完成：以伺服器 row 換掉暫時 id，保留 temp 期間的本地編輯，
+// 並同步改寫引用該 id 的 claims / payer / me。
+function adopt(tempId, row, key) {
+  const replace = (arr) => arr.map((x) => (x.id === tempId ? { ...row, ...x, id: row.id } : x));
+  state = {
+    ...state,
+    [key]: replace(state[key]),
+    claims: state.claims.map((c) => ({
+      item_id: c.item_id === tempId ? row.id : c.item_id,
+      member_id: c.member_id === tempId ? row.id : c.member_id,
+    })),
+    payer_id: state.payer_id === tempId ? row.id : state.payer_id,
+    me: state.me === tempId ? row.id : state.me,
+  };
+  if (state.me === row.id) saveRecent({ sessionId: state.sessionId, me: row.id });
+  const w = idWaiters.get(tempId);
+  // 映射要留著：先前快照過舊 tmp id 的操作（如 claimAll）之後仍會來查。
+  // 且必須在 emit() 之前登記：emit 觸發的 render 會用 canonicalId() 把
+  // UI 記的 tmp id（編輯中、展開中）換成真 id，晚一步就會對不上而掉狀態。
+  idWaiters.set(tempId, { promise: Promise.resolve(row.id) });
+  resolvedIds.set(tempId, row.id);
+  emit();
+  w?.resolve(row.id);
+}
+
+function abandon(tempId, e) {
+  idWaiters.get(tempId)?.reject(e); // 已 reject 的 promise 留在 map，讓後續引用同樣失敗
+}
+
+export function addMember(name) {
+  const clean = (name || "").trim();
+  const temp = { id: tmpId(), session_id: state.sessionId, name: clean };
+  trackTmp(temp.id);
+  const isFirst = state.members.length === 0 && !state.me;
+  setState({ members: [...state.members, temp] });
+  if (isFirst) setMe(temp.id); // 第一位新增的成員預設就是「我」
+  return db
+    .addMember(sb, state.sessionId, clean)
+    .then((row) => adopt(temp.id, row, "members"))
+    .catch((e) => {
+      abandon(temp.id, e);
+      setState({
+        members: state.members.filter((m) => m.id !== temp.id),
+        claims: state.claims.filter((c) => c.member_id !== temp.id),
+      });
+      if (state.me === temp.id) setMe(null);
+      resync(e);
+    });
+}
+
+export function renameMember(id, name) {
+  const clean = (name || "").trim();
+  setState({ members: state.members.map((m) => (m.id === id ? { ...m, name: clean } : m)) });
+  return realId(id)
+    .then((rid) => db.renameMember(sb, rid, clean))
+    .catch(resync);
+}
+
+export function removeMember(id) {
+  setState({
+    members: state.members.filter((m) => m.id !== id),
+    claims: state.claims.filter((c) => c.member_id !== id),
+    payer_id: state.payer_id === id ? null : state.payer_id,
+  });
+  if (state.me === id) setMe(null);
+  return realId(id)
+    .then((rid) => db.removeMember(sb, rid))
+    .catch(resync);
+}
+
+export function addItem(item) {
+  const temp = {
+    id: tmpId(),
+    session_id: state.sessionId,
+    name: item.name || "",
+    qty: Math.trunc(Number(item.qty)) || 1,
+    unit_price: Math.trunc(Number(item.unit_price)) || 0,
+    confidence: null,
+  };
+  trackTmp(temp.id);
+  setState({ items: [...state.items, temp] });
+  return db
+    .addItem(sb, state.sessionId, item)
+    .then((row) => adopt(temp.id, row, "items"))
+    .catch((e) => {
+      abandon(temp.id, e);
+      setState({
+        items: state.items.filter((it) => it.id !== temp.id),
+        claims: state.claims.filter((c) => c.item_id !== temp.id),
+      });
+      resync(e);
+    });
+}
+
+export function updateItem(id, patch) {
+  setState({ items: state.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+  return realId(id)
+    .then((rid) => db.updateItem(sb, rid, patch))
+    .catch(resync);
+}
+
+export function removeItem(id) {
+  setState({
+    items: state.items.filter((it) => it.id !== id),
+    claims: state.claims.filter((c) => c.item_id !== id),
+  });
+  return realId(id)
+    .then((rid) => db.removeItem(sb, rid))
+    .catch(resync);
+}
 
 export function isClaimed(itemId, memberId) {
   return state.claims.some((c) => c.item_id === itemId && c.member_id === memberId);
 }
-export const toggleClaim = (itemId, memberId) =>
-  isClaimed(itemId, memberId)
-    ? run(db.removeClaim(sb, itemId, memberId))
-    : run(db.addClaim(sb, itemId, memberId));
-export const claimAll = (itemId) =>
-  run(
-    db.clearClaims(sb, itemId).then(() =>
-      Promise.all(state.members.map((m) => db.addClaim(sb, itemId, m.id)))
-    )
-  );
-export const clearClaims = (itemId) => run(db.clearClaims(sb, itemId));
 
-export const addAdjustment = (adj) => run(db.addAdjustment(sb, state.sessionId, adj));
-export const updateAdjustment = (id, patch) => run(db.updateAdjustment(sb, id, patch));
-export const removeAdjustment = (id) => run(db.removeAdjustment(sb, id));
+// 認領寫入以 FIFO 佇列保序：同一 (item, member) 快速連點（加→移）若平行送出，
+// 到達伺服器的順序顛倒會讓最終狀態與使用者意圖相反（移除先到刪不到東西，
+// 稍後加入落地 → Realtime reload 又把 UI 翻回去）。realId 的等待也放進佇列，
+// 確保「送出順序＝使用者操作順序」，不因暫時 id 換成真 id 而亂序。
+let claimWrites = Promise.resolve();
+function enqueueClaimWrite(task) {
+  const run = claimWrites.then(task);
+  claimWrites = run.catch(() => {}); // 單筆失敗不阻塞後續寫入
+  return run;
+}
 
-export const setPayer = (id) => run(db.setPayer(sb, state.sessionId, id));
+export function toggleClaim(itemId, memberId) {
+  const on = isClaimed(itemId, memberId);
+  setState({
+    claims: on
+      ? state.claims.filter((c) => !(c.item_id === itemId && c.member_id === memberId))
+      : [...state.claims, { item_id: itemId, member_id: memberId }],
+  });
+  return enqueueClaimWrite(async () => {
+    const [i, m] = await Promise.all([realId(itemId), realId(memberId)]);
+    return on ? db.removeClaim(sb, i, m) : db.addClaim(sb, i, m);
+  }).catch(resync);
+}
+
+export function claimAll(itemId) {
+  const members = state.members;
+  setState({
+    claims: [
+      ...state.claims.filter((c) => c.item_id !== itemId),
+      ...members.map((m) => ({ item_id: itemId, member_id: m.id })),
+    ],
+  });
+  return enqueueClaimWrite(async () => {
+    const i = await realId(itemId);
+    await db.clearClaims(sb, i);
+    await Promise.all(members.map(async (m) => db.addClaim(sb, i, await realId(m.id))));
+  }).catch(resync);
+}
+
+export function clearClaims(itemId) {
+  setState({ claims: state.claims.filter((c) => c.item_id !== itemId) });
+  return enqueueClaimWrite(async () => db.clearClaims(sb, await realId(itemId))).catch(resync);
+}
+
+export function addAdjustment(adj) {
+  const temp = { id: tmpId(), session_id: state.sessionId, ...adj };
+  trackTmp(temp.id);
+  setState({ adjustments: [...state.adjustments, temp] });
+  return db
+    .addAdjustment(sb, state.sessionId, adj)
+    .then((row) => adopt(temp.id, row, "adjustments"))
+    .catch((e) => {
+      abandon(temp.id, e);
+      setState({ adjustments: state.adjustments.filter((a) => a.id !== temp.id) });
+      resync(e);
+    });
+}
+
+export function updateAdjustment(id, patch) {
+  setState({ adjustments: state.adjustments.map((a) => (a.id === id ? { ...a, ...patch } : a)) });
+  return realId(id)
+    .then((rid) => db.updateAdjustment(sb, rid, patch))
+    .catch(resync);
+}
+
+export function removeAdjustment(id) {
+  setState({ adjustments: state.adjustments.filter((a) => a.id !== id) });
+  return realId(id)
+    .then((rid) => db.removeAdjustment(sb, rid))
+    .catch(resync);
+}
+
+export function setPayer(id) {
+  // 等待真 id 期間使用者可能離開/換 session，鎖定呼叫當下的 session
+  const sessionId = state.sessionId;
+  setState({ payer_id: id });
+  return realId(id)
+    .then((rid) => db.setPayer(sb, sessionId, rid))
+    .catch(resync);
+}
 
 // ---- OCR：上傳收據 → Edge Function（Gemini）→ 寫入品項與收據總額 ----
 // base64：不含 dataURL 前綴的影像內容（main.js 已縮圖壓縮）

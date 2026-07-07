@@ -184,12 +184,34 @@ main {
   font-weight: 500;
   letter-spacing: 0.01em;
 }
+.help-btn {
+  vertical-align: middle;
+  margin-left: 2px;
+  padding: 4px;
+}
+.help-btn .mi {
+  width: 17px;
+  height: 17px;
+}
+.section-help {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
 
 .row {
   display: flex;
   gap: 8px;
   align-items: center;
   margin-top: 12px;
+}
+/* flex 子元素預設 min-width:auto 不會縮小，窄螢幕會把行尾按鈕擠出卡片外 */
+.row > * {
+  min-width: 0;
+}
+.row > button {
+  flex: none;
 }
 
 /* ---------- Text fields (MD3 outlined) ---------- */
@@ -303,14 +325,20 @@ button.link {
   text-align: center;
 }
 
-/* ---------- Session 標頭 ---------- */
+/* ---------- Session 標頭（Material 風格：文字 + icon 按鈕） ---------- */
 .sessionbar {
   padding: 16px;
 }
 .sb-row {
-  margin-top: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 4px;
   flex-wrap: wrap;
+}
+.sb-codebox {
+  min-width: 0;
+  text-align: center;
 }
 .sb-label {
   font-size: 11px;
@@ -325,11 +353,45 @@ button.link {
   letter-spacing: 6px;
   color: var(--md-primary);
 }
-.sb-row .link {
-  margin-left: auto;
+.sb-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
 }
-.sb-row .link + .link {
-  margin-left: 0;
+.mi {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex: none;
+}
+.mbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--md-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+.mbtn:hover {
+  background: color-mix(in srgb, var(--md-primary) 8%, transparent);
+}
+.mbtn:active {
+  background: color-mix(in srgb, var(--md-primary) 16%, transparent);
+}
+.mbtn-muted {
+  color: var(--muted);
+}
+.mbtn-muted:hover {
+  background: color-mix(in srgb, var(--md-on-surface-variant) 10%, transparent);
+}
+.mbtn-muted:active {
+  background: color-mix(in srgb, var(--md-on-surface-variant) 18%, transparent);
 }
 .qr {
   margin-top: 16px;
@@ -370,25 +432,56 @@ button.link {
 .chip-name {
   background: none;
   color: var(--md-on-surface);
-  padding: 6px 6px 6px 14px;
-  min-height: 32px;
-  border-radius: 0;
+  padding: 11px 4px 11px 14px;
   font-weight: 500;
 }
 .chip.is-me .chip-name {
   color: var(--md-on-secondary-container);
 }
-.chip-x {
+/* 編輯 / 刪除是手指主要目標：拉到 44px 高、加寬點擊範圍 */
+.chip-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   color: var(--muted);
-  padding: 6px 12px 6px 4px;
-  min-height: 32px;
-  border-radius: 0;
-  font-weight: 500;
-  font-size: 16px;
+  padding: 11px 8px;
+}
+.chip-edit-btn .mi {
+  width: 20px;
+  height: 20px;
+}
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  color: var(--muted);
+  padding: 11px 14px 11px 8px;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
 }
 .chip.is-me .chip-x {
   color: var(--md-on-secondary-container);
+}
+.chip-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--md-secondary-container);
+  border-radius: 999px;
+  padding: 3px 4px;
+}
+.chip-edit input {
+  width: 120px;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+.chip-save {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px;
+  border-radius: 999px;
 }
 form[data-act="addMember"] input {
   flex: 1;
@@ -417,6 +510,48 @@ form[data-act="addMember"] input {
   opacity: 0.6;
   cursor: wait;
 }
+.receipt-preview {
+  margin: 0 0 10px;
+  text-align: center;
+}
+.receipt-preview img {
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: zoom-in;
+}
+.receipt-preview.expanded img {
+  max-height: none;
+  cursor: zoom-out;
+}
+.receipt-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.receipt-tools .hint {
+  margin: 0;
+}
+.receipt-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  background: #f9fafb;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.item-add {
+  margin-bottom: 12px;
+}
 
 /* ---------- Items ---------- */
 .item {
@@ -434,7 +569,8 @@ form[data-act="addMember"] input {
   flex: none;
   cursor: help;
 }
-.item-head {
+/* 品名獨占一列，盡量完整顯示；數量/單價/小計移到第二列 */
+.item-name-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -443,16 +579,24 @@ form[data-act="addMember"] input {
   flex: 1;
   min-width: 0;
 }
-.item-num {
-  width: 64px;
-  text-align: right;
+.item-calc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
 }
-.item-head .x {
+.item-num {
+  width: 76px;
+  text-align: right;
+  flex: none;
+}
+.item-calc-row .x {
   color: var(--muted);
 }
 .item-total {
   font-weight: 600;
   white-space: nowrap;
+  margin-left: auto;
 }
 .item-del,
 button.item-del {
@@ -461,12 +605,72 @@ button.item-del {
   padding: 8px;
   min-height: 40px;
   border-radius: var(--shape-full);
+  flex: none;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  color: var(--muted);
+  padding: 6px;
+  border-radius: 999px;
+  flex: none;
+}
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--md-on-surface-variant) 10%, transparent);
 }
 .item-add input[name="name"] {
-  flex: 1;
+  flex: 1 1 auto;
 }
 .item-add input[type="number"] {
-  width: 70px;
+  width: 64px;
+  flex: none;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* 已認領品項的摺疊摘要列 */
+.item-collapsed {
+  padding: 4px 6px;
+}
+.item-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--ink);
+  text-align: left;
+  padding: 8px 6px;
+  border-radius: 8px;
+  font-weight: inherit;
+}
+.item-summary:active {
+  background: rgba(47, 109, 240, 0.06);
+}
+.item-summary .mi {
+  color: var(--muted);
+}
+.sum-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere; /* 品名太長就換行，不截斷 */
+}
+.sum-claimers {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sum-total {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 /* ---------- Claims (MD3 filter chips) ---------- */
@@ -510,13 +714,17 @@ button.item-del {
 
 /* ---------- Adjustments ---------- */
 .adj input[data-field="label"] {
-  flex: 1;
+  flex: 1 1 auto;
 }
 .adj select {
   width: 84px;
+  flex: none;
 }
 .adj input[type="number"] {
-  width: 90px;
+  width: 76px;
+  flex: none;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 /* ---------- Settlement ---------- */
