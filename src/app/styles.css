@@ -489,13 +489,16 @@ form[data-act="addMember"] input {
 
 /* ---------- OCR 上傳 (dashed dropzone) ---------- */
 .ocr-row {
+  display: flex;
+  gap: 10px;
   margin: 0 0 16px;
 }
 .ocr-btn {
   display: block;
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
   text-align: center;
-  padding: 16px;
+  padding: 16px 8px;
   border: 1.5px dashed var(--md-primary);
   border-radius: var(--shape-md);
   color: var(--md-primary);
