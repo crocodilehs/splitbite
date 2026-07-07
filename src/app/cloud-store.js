@@ -213,11 +213,13 @@ function adopt(tempId, row, key) {
     me: state.me === tempId ? row.id : state.me,
   };
   if (state.me === row.id) saveRecent({ sessionId: state.sessionId, me: row.id });
-  emit();
   const w = idWaiters.get(tempId);
-  // 映射要留著：先前快照過舊 tmp id 的操作（如 claimAll）之後仍會來查
+  // 映射要留著：先前快照過舊 tmp id 的操作（如 claimAll）之後仍會來查。
+  // 且必須在 emit() 之前登記：emit 觸發的 render 會用 canonicalId() 把
+  // UI 記的 tmp id（編輯中、展開中）換成真 id，晚一步就會對不上而掉狀態。
   idWaiters.set(tempId, { promise: Promise.resolve(row.id) });
   resolvedIds.set(tempId, row.id);
+  emit();
   w?.resolve(row.id);
 }
 

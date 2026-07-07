@@ -45,6 +45,21 @@ function render() {
   // 樂觀新增的 tmp id 換成真 id 後，同步更新以 id 記錄的 UI 狀態
   expandedItems = new Set([...expandedItems].map(store.canonicalId));
   if (editingMemberId) editingMemberId = store.canonicalId(editingMemberId);
+
+  // 重繪會整個重建 DOM：先記下正在輸入的欄位（值與游標），重建後還原，
+  // 避免 Realtime 或樂觀更新觸發的 render 清掉使用者打到一半的字
+  const active = document.activeElement;
+  let restore = null;
+  if (app.contains(active) && (active.tagName === "INPUT" || active.tagName === "SELECT")) {
+    restore = { key: fieldKey(active), value: active.value, selStart: null, selEnd: null };
+    try {
+      restore.selStart = active.selectionStart;
+      restore.selEnd = active.selectionEnd;
+    } catch {
+      // number input 不支援 selection
+    }
+  }
+
   app.innerHTML = "";
 
   if (s.status !== "active") {
@@ -59,6 +74,39 @@ function render() {
     renderAdjustments(s),
     renderSettlement(s)
   );
+
+  if (restore) {
+    for (const f of app.querySelectorAll("input, select")) {
+      if (fieldKey(f) !== restore.key) continue;
+      const rendered = f.value;
+      f.value = restore.value;
+      f.focus({ preventScroll: true });
+      if (restore.selStart != null) {
+        try {
+          f.setSelectionRange(restore.selStart, restore.selEnd);
+        } catch {}
+      }
+      // 還原的內容與 state 不同（有未存的編輯）：focus 在設值之後，之後的
+      // blur 不會再觸發 change，先補發一次讓 editItem / editAdj 不掉更新
+      if (f.value !== rendered) f.dispatchEvent(new Event("change", { bubbles: true }));
+      break;
+    }
+  }
+}
+
+// 跨重繪辨識同一個欄位：以自身與所屬表單的 data-* / name 組 key。
+// data-id 經 canonicalId 換算，tmp id 換成真 id 後仍視為同一欄位。
+function fieldKey(f) {
+  const wrap = f.closest("[data-act]") === f ? f.form?.closest?.("[data-act]") : f.closest("[data-act]");
+  return [
+    f.tagName,
+    f.name || "",
+    f.dataset.act || "",
+    store.canonicalId(f.dataset.id || ""),
+    f.dataset.field || "",
+    wrap?.dataset.act || "",
+    store.canonicalId(wrap?.dataset.id || ""),
+  ].join("|");
 }
 
 // ---------- Gate：建帳 / 加入 ----------
