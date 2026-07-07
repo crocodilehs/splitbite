@@ -66,6 +66,21 @@ main {
   margin: 0 0 12px;
   font-size: 16px;
 }
+.help-btn {
+  vertical-align: middle;
+  margin-left: 2px;
+  padding: 4px;
+}
+.help-btn .mi {
+  width: 17px;
+  height: 17px;
+}
+.adj-help {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
 
 .row {
   display: flex;
@@ -305,6 +320,31 @@ form[data-act="addMember"] input {
 .ocr-btn.busy {
   opacity: 0.6;
   cursor: wait;
+}
+.receipt-preview {
+  margin: 0 0 10px;
+  text-align: center;
+}
+.receipt-preview img {
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: zoom-in;
+}
+.receipt-preview.expanded img {
+  max-height: none;
+  cursor: zoom-out;
+}
+.receipt-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.receipt-tools .hint {
+  margin: 0;
 }
 
 /* items */

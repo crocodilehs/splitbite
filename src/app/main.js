@@ -5,9 +5,12 @@ import * as store from "./cloud-store.js";
 
 const app = document.getElementById("app");
 
-// 純 UI 狀態（不進 store）：成員編輯中、已認領品項的展開狀態
+// 純 UI 狀態（不進 store）：成員編輯中、已認領品項的展開狀態、
+// 收據照片預覽（本機 dataURL，供比對 OCR 結果）、調整項說明開關
 let editingMemberId = null;
 let expandedItems = new Set();
+let receiptPreview = null; // { url, expanded }
+let showAdjHelp = false;
 
 // Material Symbols（Apache 2.0）路徑，viewBox="0 -960 960 960"
 const ICON_PATHS = {
@@ -20,6 +23,7 @@ const ICON_PATHS = {
   check: "M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z",
   expandMore: "M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z",
   expandLess: "m296-345-56-56 240-240 240 240-56 56-184-184-184 184Z",
+  help: "M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Z",
 };
 function icon(name) {
   return `<svg class="mi" viewBox="0 -960 960 960" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
@@ -97,9 +101,6 @@ function renderSessionBar(s) {
     )
   );
   sec.append(renderQr(s.code));
-  if (!s.me) {
-    sec.append(el(`<p class="hint">👇 在下方點你的名字，設定「我是誰」（沒有就先新增自己）。</p>`));
-  }
   return sec;
 }
 
@@ -152,6 +153,7 @@ function renderMembers(s) {
      </form>`
   );
   sec.append(form);
+  sec.append(el(`<p class="hint">點成員名字可設定哪個是自己（⭐）。</p>`));
   return sec;
 }
 
@@ -170,6 +172,19 @@ function renderItems(s) {
      </div>`
   );
   sec.append(ocrRow);
+  // 收據照片預覽：辨識中與辨識後都顯示，方便比對結果；點圖可放大/縮小
+  if (receiptPreview) {
+    const pv = el(
+      `<div class="receipt-preview ${receiptPreview.expanded ? "expanded" : ""}">
+         <img src="${receiptPreview.url}" alt="收據照片" data-act="toggleReceipt" />
+         <div class="receipt-tools">
+           <span class="hint">${receiptPreview.expanded ? "點圖片縮小" : "點圖片放大"}</span>
+           <button class="link" data-act="closeReceipt">關閉圖片</button>
+         </div>
+       </div>`
+    );
+    sec.append(pv);
+  }
   if (s.error && !s.ocrBusy) sec.append(el(`<p class="warn">${escapeHtml(s.error)}</p>`));
 
   if (s.members.length === 0) sec.append(el(`<p class="hint">先新增成員，才能認領品項。</p>`));
@@ -253,7 +268,14 @@ function renderItemRow(s, it) {
 
 // ---------- Adjustments ----------
 function renderAdjustments(s) {
-  const sec = el(`<section class="card"><h2>➕ 服務費 / 折扣</h2></section>`);
+  const sec = el(
+    `<section class="card">
+       <h2>➕ 服務費 / 折扣
+         <button class="icon-btn help-btn" data-act="toggleAdjHelp" aria-label="說明" aria-expanded="${showAdjHelp}">${icon("help")}</button>
+       </h2>
+     </section>`
+  );
+  if (showAdjHelp) sec.append(el(`<p class="hint adj-help">折扣請填負數。服務費 / 折扣會按各品項小計的占比分攤給成員。</p>`));
   for (const a of s.adjustments) {
     sec.append(
       el(
@@ -277,7 +299,6 @@ function renderAdjustments(s) {
        </div>`
     )
   );
-  sec.append(el(`<p class="hint">折扣請填負數。按品項小計占比分攤。</p>`));
   return sec;
 }
 
@@ -462,6 +483,18 @@ app.addEventListener("click", async (e) => {
       expandedItems.delete(btn.dataset.id);
       render();
       break;
+    case "toggleReceipt":
+      if (receiptPreview) receiptPreview.expanded = !receiptPreview.expanded;
+      render();
+      break;
+    case "closeReceipt":
+      receiptPreview = null;
+      render();
+      break;
+    case "toggleAdjHelp":
+      showAdjHelp = !showAdjHelp;
+      render();
+      break;
     case "toggleClaim":
       // 認領中的品項保持展開，其餘已認領品項自動摺疊（換選下一項＝上一項選完了）
       expandedItems = new Set([btn.dataset.item]);
@@ -512,6 +545,8 @@ app.addEventListener("change", (e) => {
 // 收據照片先縮圖再上傳：省流量、加快辨識，也避開 Edge Function 的大小上限
 async function uploadReceipt(file) {
   const dataUrl = await downscaleImage(file, 1600, 0.85);
+  receiptPreview = { url: dataUrl, expanded: false }; // 顯示照片供比對辨識結果
+  render();
   const [head, base64] = dataUrl.split(",");
   const mime = head.match(/^data:([^;]+)/)?.[1] || "image/jpeg";
   await store.ocrReceipt(base64, mime);
