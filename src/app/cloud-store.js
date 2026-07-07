@@ -311,6 +311,17 @@ export function isClaimed(itemId, memberId) {
   return state.claims.some((c) => c.item_id === itemId && c.member_id === memberId);
 }
 
+// 認領寫入以 FIFO 佇列保序：同一 (item, member) 快速連點（加→移）若平行送出，
+// 到達伺服器的順序顛倒會讓最終狀態與使用者意圖相反（移除先到刪不到東西，
+// 稍後加入落地 → Realtime reload 又把 UI 翻回去）。realId 的等待也放進佇列，
+// 確保「送出順序＝使用者操作順序」，不因暫時 id 換成真 id 而亂序。
+let claimWrites = Promise.resolve();
+function enqueueClaimWrite(task) {
+  const run = claimWrites.then(task);
+  claimWrites = run.catch(() => {}); // 單筆失敗不阻塞後續寫入
+  return run;
+}
+
 export function toggleClaim(itemId, memberId) {
   const on = isClaimed(itemId, memberId);
   setState({
@@ -318,9 +329,10 @@ export function toggleClaim(itemId, memberId) {
       ? state.claims.filter((c) => !(c.item_id === itemId && c.member_id === memberId))
       : [...state.claims, { item_id: itemId, member_id: memberId }],
   });
-  return Promise.all([realId(itemId), realId(memberId)])
-    .then(([i, m]) => (on ? db.removeClaim(sb, i, m) : db.addClaim(sb, i, m)))
-    .catch(resync);
+  return enqueueClaimWrite(async () => {
+    const [i, m] = await Promise.all([realId(itemId), realId(memberId)]);
+    return on ? db.removeClaim(sb, i, m) : db.addClaim(sb, i, m);
+  }).catch(resync);
 }
 
 export function claimAll(itemId) {
@@ -331,19 +343,16 @@ export function claimAll(itemId) {
       ...members.map((m) => ({ item_id: itemId, member_id: m.id })),
     ],
   });
-  return realId(itemId)
-    .then(async (i) => {
-      await db.clearClaims(sb, i);
-      await Promise.all(members.map(async (m) => db.addClaim(sb, i, await realId(m.id))));
-    })
-    .catch(resync);
+  return enqueueClaimWrite(async () => {
+    const i = await realId(itemId);
+    await db.clearClaims(sb, i);
+    await Promise.all(members.map(async (m) => db.addClaim(sb, i, await realId(m.id))));
+  }).catch(resync);
 }
 
 export function clearClaims(itemId) {
   setState({ claims: state.claims.filter((c) => c.item_id !== itemId) });
-  return realId(itemId)
-    .then((i) => db.clearClaims(sb, i))
-    .catch(resync);
+  return enqueueClaimWrite(async () => db.clearClaims(sb, await realId(itemId))).catch(resync);
 }
 
 export function addAdjustment(adj) {
