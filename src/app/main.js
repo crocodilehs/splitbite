@@ -25,6 +25,7 @@ const ICON_PATHS = {
   check: "M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z",
   expandMore: "M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z",
   expandLess: "m296-345-56-56 240-240 240 240-56 56-184-184-184 184Z",
+  close: "M256-227.69 227.69-256l224-224-224-224L256-732.31 480-508.31l224-224L732.31-704 508.31-480l224 224L704-227.69 480-451.69 256-227.69Z",
   help: "M478-240q21 0 35.5-14.5T528-290q0-21-14.5-35.5T478-340q-21 0-35.5 14.5T428-290q0 21 14.5 35.5T478-240Zm-36-154h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Z",
 };
 function icon(name) {
@@ -253,18 +254,20 @@ function renderItems(s) {
   // 不加 capture 屬性時，部分手機瀏覽器不會跳出「拍照或從相簿選取」的選單，
   // 而是直接開相簿、拍照選項消失，因此改用兩顆分開的按鈕：
   // 「拍照」加 capture="environment" 直接開相機；「上傳照片」不加 capture 走相簿。
-  const ocrRow = el(
-    `<div class="row ocr-row">
-       <label class="ocr-btn ${s.ocrBusy ? "busy" : ""}">
-         ${s.ocrBusy ? "⏳ 辨識中…" : "📷 拍照"}
-         <input type="file" accept="image/*" capture="environment" data-act="ocr" ${s.ocrBusy ? "disabled" : ""} hidden />
-       </label>
-       <label class="ocr-btn ${s.ocrBusy ? "busy" : ""}">
-         ${s.ocrBusy ? "⏳ 辨識中…" : "🖼️ 上傳照片"}
-         <input type="file" accept="image/*" data-act="ocr" ${s.ocrBusy ? "disabled" : ""} hidden />
-       </label>
-     </div>`
-  );
+  const ocrRow = s.ocrBusy
+    ? el(`<div class="row ocr-row"><div class="ocr-btn busy ocr-busy">⏳ 辨識中…</div></div>`)
+    : el(
+        `<div class="row ocr-row">
+           <label class="ocr-btn">
+             📷 拍照
+             <input type="file" accept="image/*" capture="environment" data-act="ocr" hidden />
+           </label>
+           <label class="ocr-btn">
+             🖼️ 上傳照片
+             <input type="file" accept="image/*" data-act="ocr" hidden />
+           </label>
+         </div>`
+      );
   sec.append(ocrRow);
   // 收據照片預覽：辨識中與辨識後都顯示，方便比對結果；可摺疊、點圖可放大/縮小
   if (receiptPreview) {
@@ -285,8 +288,8 @@ function renderItems(s) {
              <img src="${receiptPreview.url}" alt="收據照片" data-act="toggleReceipt" />
              <div class="receipt-tools">
                <span class="hint">${receiptPreview.expanded ? "點圖片縮小" : "點圖片放大"}</span>
-               <button class="link" data-act="collapseReceipt">摺疊圖片</button>
-               <button class="link" data-act="closeReceipt">關閉圖片</button>
+               <button class="btn-outlined" data-act="collapseReceipt">${icon("expandLess")}摺疊圖片</button>
+               <button class="btn-outlined" data-act="closeReceipt">${icon("close")}關閉圖片</button>
              </div>
            </div>`
         )

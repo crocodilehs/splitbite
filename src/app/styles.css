@@ -513,6 +513,9 @@ form[data-act="addMember"] input {
   opacity: 0.6;
   cursor: wait;
 }
+.ocr-busy {
+  flex: 1 1 100%;
+}
 .receipt-preview {
   margin: 0 0 10px;
   text-align: center;
@@ -533,10 +536,28 @@ form[data-act="addMember"] input {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .receipt-tools .hint {
   margin: 0;
+}
+.btn-outlined {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--md-primary);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--shape-full);
+  padding: 8px 16px 8px 12px;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.btn-outlined .mi {
+  width: 18px;
+  height: 18px;
 }
 .receipt-bar {
   display: flex;
