@@ -175,7 +175,7 @@ function renderSessionBar(s) {
            <div class="sb-code">${s.code}</div>
          </div>
          <div class="sb-actions">
-           <button class="mbtn" data-act="copyCode">${icon("copy")}<span>複製</span></button>
+           <button class="mbtn" data-act="copyLink">${icon("copy")}<span>複製連結</span></button>
            <button class="mbtn" data-act="shareLink">${icon("share")}<span>分享</span></button>
            <button class="mbtn mbtn-muted" data-act="leave">${icon("logout")}<span>離開</span></button>
          </div>
@@ -567,9 +567,9 @@ app.addEventListener("click", async (e) => {
     case "leave":
       if (confirm("離開這場分帳？（資料仍保留在雲端，可用加入碼回來）")) store.leaveSession();
       break;
-    case "copyCode":
-      await copy(store.getState().code);
-      flash(btn, "已複製", "複製");
+    case "copyLink":
+      await copy(joinUrl(store.getState().code));
+      flash(btn, "已複製連結", "複製連結");
       break;
     case "shareLink": {
       const url = joinUrl(store.getState().code);
