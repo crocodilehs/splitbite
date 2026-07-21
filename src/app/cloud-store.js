@@ -14,6 +14,23 @@ import * as db from "./db.js";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const LS_RECENT = "splitbite.recent";
 
+async function ensureAuthenticated() {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await sb.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (session) return session;
+
+  const { data, error } = await sb.auth.signInAnonymously();
+  if (error) {
+    throw new Error(
+      "匿名登入失敗。請確認 Supabase Authentication 已啟用 Anonymous Sign-Ins。"
+    );
+  }
+  return data.session;
+}
+
 const EMPTY = () => ({
   status: "idle", // 'idle' | 'loading' | 'active' | 'error'
   error: null,
@@ -84,6 +101,7 @@ export async function init() {
 export async function createSession() {
   setState({ status: "loading", error: null });
   try {
+    await ensureAuthenticated();
     const s = await db.createSession(sb);
     saveRecent({ code: s.code, sessionId: s.id, me: null });
     await activate(s.id, s.code);
@@ -96,6 +114,12 @@ export async function createSession() {
 export async function joinByCode(input) {
   const code = normalizeCode(input);
   setState({ status: "loading", error: null });
+  try {
+    await ensureAuthenticated();
+  } catch (e) {
+    setState({ status: "idle", error: e.message });
+    throw e;
+  }
   const s = await db.getSessionByCode(sb, code);
   if (!s) {
     setState({ status: "idle", error: "找不到此加入碼" });
