@@ -5,23 +5,22 @@
 // 回傳的資料形狀對應 §3 資料模型，與本機 store.js 一致，
 // 故 calc.js 與 UI 不需改動。
 
-import { generateUniqueCode } from "../core/code.js";
+import { generateCode } from "../core/code.js";
 
-// 建立 session：產生不碰撞的加入碼後 insert（§3、§8）
+// 建立 session：隨機碼由受控 RPC 寫入；若唯一鍵碰撞則重新產生。
 export async function createSession(sb) {
-  const existsFn = async (code) => {
-    const { data, error } = await sb.from("sessions").select("id").eq("code", code).maybeSingle();
-    if (error) throw error;
-    return !!data;
-  };
-  const code = await generateUniqueCode(existsFn);
-  const { data, error } = await sb.from("sessions").insert({ code }).select().single();
-  if (error) throw error;
-  return data; // { id, code, payer_id, created_at }
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { data, error } = await sb.rpc("create_session", { p_code: generateCode() }).maybeSingle();
+    if (!error) return data;
+    if (error.code !== "23505") throw error;
+  }
+  throw new Error("產生唯一加入碼失敗：連續 10 次碰撞");
 }
 
 export async function getSessionByCode(sb, code) {
-  const { data, error } = await sb.from("sessions").select("*").eq("code", code).maybeSingle();
+  // join_session 會在資料庫內驗證加入碼並建立 session_access，
+  // 前端不再擁有列出所有 sessions 的權限。
+  const { data, error } = await sb.rpc("join_session", { p_code: code }).maybeSingle();
   if (error) throw error;
   return data; // null 表示查無此 session
 }
