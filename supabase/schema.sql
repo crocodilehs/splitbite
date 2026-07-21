@@ -11,7 +11,18 @@ create table if not exists public.sessions (
   created_at  timestamptz not null default now()
 );
 
--- 成員（開帳時預建 + 後續自行加入）
+-- 可存取分帳的 Supabase 使用者。
+-- 使用 Anonymous Sign-in 時，每個瀏覽器仍有獨立的 auth.uid()。
+create table if not exists public.session_access (
+  session_id  uuid not null references public.sessions(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  role        text not null default 'member',
+  created_at  timestamptz not null default now(),
+  primary key (session_id, user_id),
+  constraint session_access_role_check check (role in ('creator', 'member'))
+);
+
+-- 成員（分帳畫面中的姓名，與登入身分分開）
 create table if not exists public.members (
   id          uuid primary key default gen_random_uuid(),
   session_id  uuid not null references public.sessions(id) on delete cascade,
@@ -50,6 +61,7 @@ alter table public.items    add column if not exists confidence text;   -- 'high
 alter table public.sessions add column if not exists ocr_total numeric; -- OCR 讀到的收據總額（對帳警告用）
 
 -- 索引：依 session 撈資料、認領查詢
+create index if not exists session_access_user_idx on public.session_access(user_id);
 create index if not exists members_session_idx on public.members(session_id);
 create index if not exists items_session_idx on public.items(session_id);
 create index if not exists adjustments_session_idx on public.adjustments(session_id);
